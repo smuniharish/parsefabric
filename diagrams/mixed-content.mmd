@@ -1,0 +1,12 @@
+flowchart TB
+    line["Each line"] --> fence{"Opens a<br/>code fence?"}
+    fence -- yes --> fenceParser{"A parser for the<br/>fence language<br/>accepts the body?"}
+    fenceParser -- yes --> routedFence["Events from that parser;<br/>skipped lines stay code"]
+    fenceParser -- no --> codeFence["code events"]
+    fence -- no --> route{"A route matches<br/>and its parser<br/>returns events?"}
+    route -- yes --> routed["Events from<br/>the routed parser"]
+    route -- no --> pattern{"A line<br/>pattern<br/>matches?"}
+    pattern -- yes --> patternEvent["Pattern event"]
+    pattern -- no --> grammar{"The block<br/>parses as<br/>code?"}
+    grammar -- yes --> code["code event<br/>with language"]
+    grammar -- no --> other["other event<br/>with the text"]

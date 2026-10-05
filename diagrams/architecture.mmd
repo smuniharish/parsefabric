@@ -1,0 +1,11 @@
+flowchart TB
+    inputs["Input and ParseContext<br/>text, bytes or<br/>decoded values"] --> engine
+    parsers["Parsers<br/>built-in, mixed content<br/>or your own"] --> engine
+    parsers --> partitioned
+    engine["ParseEngine<br/>fills evidence,<br/>streams inputs,<br/>emits lifecycle events"] --> result["ParseResult<br/>events with evidence,<br/>issues, statistics"]
+    partitioned["Partitioned parsing<br/>on execution backends:<br/>asyncio, threads,<br/>processes, clusters"] --> result
+    engine -. lifecycle events .-> sinks["Observability sinks<br/>OpenTelemetry,<br/>structlog"]
+    result --> aggregates["Lossless evidence<br/>aggregates, grouped<br/>and checksummed"]
+    aggregates --> wire["Wire format<br/>serialize, deserialize"]
+    aggregates --> verify["materialize<br/>rebuild and<br/>verify events"]
+    aggregates --> summary["EvidenceSummarizer<br/>optional report from<br/>a language model"]

@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyrefly check
+
+  test:
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Run the tests with branch coverage
+        run: uv run coverage run -m pytest
+      - name: Require 100% line and branch coverage
+        run: uv run coverage report
+
+  examples:
+    name: Examples and benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Check the recorded output of every offline example
+        run: uv run python examples/verify_examples.py
+      - name: Benchmark smoke run
+        run: uv run python -m benchmarks.bench_parse --records 1000
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked --no-default-groups --group docs
+      - run: uv run --no-default-groups --group docs mkdocs build --strict
+
+  package:
+    name: Build and check distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv build
+      - name: Check distribution metadata
+        run: uvx twine check --strict dist/*
+      - name: Check the wheel contents
+        run: |
+          uv run --no-project python - <<'EOF'
+          import zipfile
+          from pathlib import Path
+
+          (wheel,) = Path("dist").glob("*.whl")
+          names = zipfile.ZipFile(wheel).namelist()
+          assert "parsefabric/py.typed" in names, "py.typed is missing"
+          unexpected = [name for name in names if not name.startswith("parsefabric")]
+          assert not unexpected, f"unexpected files in the wheel: {unexpected}"
+          EOF
+      - name: Install the wheel and import every public module
+        run: |
+          uv venv --python 3.12 /tmp/wheel
+          uv pip install --python /tmp/wheel/bin/python dist/*.whl
+          /tmp/wheel/bin/python -c "import parsefabric, parsefabric.aggregation, parsefabric.builtins, parsefabric.compression, parsefabric.engine, parsefabric.execution, parsefabric.observability, parsefabric.partitioning, parsefabric.patterns, parsefabric.registry, parsefabric.serialization, parsefabric.summarization; print(parsefabric.__version__)"
+      - name: Install the source distribution
+        run: |
+          uv venv --python 3.12 /tmp/sdist
+          uv pip install --python /tmp/sdist/bin/python dist/*.tar.gz
+          /tmp/sdist/bin/python -c "import parsefabric; print(parsefabric.__version__)"
+      - name: Run the tests from the source distribution
+        run: |
+          mkdir /tmp/sdist-tests
+          tar -xzf dist/*.tar.gz -C /tmp/sdist-tests
+          cp uv.lock /tmp/sdist-tests/parsefabric-*/
+          cd /tmp/sdist-tests/parsefabric-*/
+          uv sync --locked
+          uv run pytest -q -p no:cacheprovider
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error

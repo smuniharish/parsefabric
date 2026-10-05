@@ -1,0 +1,8 @@
+flowchart TB
+    source["Source text and ParseContext"] --> parse["parser.parse()"]
+    parse --> events["Events with type, attributes, severity,<br/>line, byte span and pattern"]
+    parse -. "failure with continue_on_error" .-> issue["ParseIssue<br/>recorded, not raised"]
+    events --> enrich["Engine fills missing source, parser,<br/>version, partition and correlation"]
+    enrich --> result["ParseResult"]
+    issue --> result
+    result --> consumer["Your code: store, alert, aggregate"]

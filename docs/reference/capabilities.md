@@ -1,0 +1,3 @@
+# Capabilities
+
+::: parsefabric.capabilities

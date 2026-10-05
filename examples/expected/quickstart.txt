@@ -1,0 +1,6 @@
+timeout (ERROR)
+  message: 2026-10-04T08:15:02Z ERROR payment gateway timed out after 30s
+  evidence: checkout.log line 1, bytes 0-63, pattern 'timeout', parser application-log v1
+error (ERROR)
+  message: payment gateway timed out after 30s
+  evidence: checkout.log line 1, bytes 0-63, pattern 'error', parser application-log v1

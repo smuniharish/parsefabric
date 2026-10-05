@@ -1,0 +1,1254 @@
+2026-09-30T10:15:00+00:00 INFO api request started on node-01
+request_id=req-4100 route=/v1/api/items
+{"service":"api","request":"req-4100","host":"node-01"}
+2026-09-30T10:15:00+00:00 WARN api latency 240ms exceeds 200ms
+METRIC api.latency_ms=240
+2026-09-30T10:15:00+00:00 ERROR api database timeout on node-01
+2026-09-30T10:15:02+00:00 ERROR api database timeout on node-01
+operator note: database failover for api on node-01
+2026-09-30T10:15:03+00:00 INFO api request recovered
+```python
+def retry_api():
+    return "database failover"
+```
+2026-09-30T10:15:17+00:00 INFO billing request started on node-02
+request_id=req-4101 route=/v1/billing/items
+{"service":"billing","request":"req-4101","host":"node-02"}
+2026-09-30T10:15:17+00:00 WARN billing latency 277ms exceeds 200ms
+METRIC billing.latency_ms=277
+2026-09-30T10:15:17+00:00 ERROR billing permission denied on node-02
+operator note: policy review for billing on node-02
+2026-09-30T10:15:20+00:00 INFO billing request recovered
+trace_id=trace-08001
+retry_budget=1
+2026-09-30T10:15:34+00:00 INFO identity request started on node-03
+request_id=req-4102 route=/v1/identity/items
+{"service":"identity","request":"req-4102","host":"node-03"}
+2026-09-30T10:15:34+00:00 WARN identity latency 314ms exceeds 200ms
+METRIC identity.latency_ms=314
+2026-09-30T10:15:34+00:00 ERROR identity out of memory on node-03
+operator note: worker replacement for identity on node-03
+2026-09-30T10:15:37+00:00 INFO identity request recovered
+trace_id=trace-08002
+retry_budget=2
+2026-09-30T10:15:51+00:00 INFO queue request started on node-04
+request_id=req-4103 route=/v1/queue/items
+{"service":"queue","request":"req-4103","host":"node-04"}
+2026-09-30T10:15:51+00:00 WARN queue latency 351ms exceeds 200ms
+METRIC queue.latency_ms=351
+2026-09-30T10:15:51+00:00 ERROR queue service unavailable on node-04
+operator note: rolling deployment for queue on node-04
+2026-09-30T10:15:54+00:00 INFO queue request recovered
+trace_id=trace-08003
+retry_budget=3
+2026-09-30T10:16:08+00:00 INFO catalog request started on node-05
+request_id=req-4104 route=/v1/catalog/items
+{"service":"catalog","request":"req-4104","host":"node-05"}
+2026-09-30T10:16:08+00:00 WARN catalog latency 388ms exceeds 200ms
+METRIC catalog.latency_ms=388
+2026-09-30T10:16:08+00:00 ERROR catalog authentication failed on node-05
+2026-09-30T10:16:10+00:00 ERROR catalog authentication failed on node-05
+operator note: credential rotation for catalog on node-05
+2026-09-30T10:16:11+00:00 INFO catalog request recovered
+trace_id=trace-08004
+retry_budget=0
+2026-09-30T10:16:25+00:00 INFO search request started on node-06
+request_id=req-4105 route=/v1/search/items
+{"service":"search","request":"req-4105","host":"node-06"}
+2026-09-30T10:16:25+00:00 WARN search latency 425ms exceeds 200ms
+METRIC search.latency_ms=425
+2026-09-30T10:16:25+00:00 ERROR search connection refused on node-06
+operator note: upstream restart for search on node-06
+2026-09-30T10:16:28+00:00 INFO search request recovered
+trace_id=trace-08005
+retry_budget=1
+2026-09-30T10:16:42+00:00 INFO billing request started on node-07
+request_id=req-4106 route=/v1/billing/items
+{"service":"billing","request":"req-4106","host":"node-07"}
+2026-09-30T10:16:42+00:00 WARN billing latency 462ms exceeds 200ms
+METRIC billing.latency_ms=462
+2026-09-30T10:16:42+00:00 ERROR billing database timeout on node-07
+operator note: database failover for billing on node-07
+2026-09-30T10:16:45+00:00 INFO billing request recovered
+trace_id=trace-08006
+retry_budget=2
+2026-09-30T10:16:59+00:00 INFO identity request started on node-08
+request_id=req-4107 route=/v1/identity/items
+{"service":"identity","request":"req-4107","host":"node-08"}
+2026-09-30T10:16:59+00:00 WARN identity latency 499ms exceeds 200ms
+METRIC identity.latency_ms=499
+2026-09-30T10:16:59+00:00 ERROR identity database timeout on node-08
+operator note: database failover for identity on node-08
+2026-09-30T10:17:02+00:00 INFO identity request recovered
+trace_id=trace-08007
+retry_budget=3
+2026-09-30T10:17:16+00:00 INFO queue request started on node-09
+request_id=req-4108 route=/v1/queue/items
+{"service":"queue","request":"req-4108","host":"node-09"}
+2026-09-30T10:17:16+00:00 WARN queue latency 536ms exceeds 200ms
+METRIC queue.latency_ms=536
+2026-09-30T10:17:16+00:00 ERROR queue permission denied on node-09
+2026-09-30T10:17:18+00:00 ERROR queue permission denied on node-09
+operator note: policy review for queue on node-09
+2026-09-30T10:17:19+00:00 INFO queue request recovered
+trace_id=trace-08008
+retry_budget=0
+2026-09-30T10:17:33+00:00 INFO catalog request started on node-01
+request_id=req-4109 route=/v1/catalog/items
+{"service":"catalog","request":"req-4109","host":"node-01"}
+2026-09-30T10:17:33+00:00 WARN catalog latency 573ms exceeds 200ms
+METRIC catalog.latency_ms=573
+2026-09-30T10:17:33+00:00 ERROR catalog out of memory on node-01
+operator note: worker replacement for catalog on node-01
+2026-09-30T10:17:36+00:00 INFO catalog request recovered
+trace_id=trace-08009
+retry_budget=1
+2026-09-30T10:17:50+00:00 INFO search request started on node-02
+request_id=req-4110 route=/v1/search/items
+{"service":"search","request":"req-4110","host":"node-02"}
+2026-09-30T10:17:50+00:00 WARN search latency 610ms exceeds 200ms
+METRIC search.latency_ms=610
+2026-09-30T10:17:50+00:00 ERROR search service unavailable on node-02
+operator note: rolling deployment for search on node-02
+2026-09-30T10:17:53+00:00 INFO search request recovered
+```python
+def retry_search():
+    return "rolling deployment"
+```
+2026-09-30T10:18:07+00:00 INFO api request started on node-03
+request_id=req-4111 route=/v1/api/items
+{"service":"api","request":"req-4111","host":"node-03"}
+2026-09-30T10:18:07+00:00 WARN api latency 647ms exceeds 200ms
+METRIC api.latency_ms=647
+2026-09-30T10:18:07+00:00 ERROR api authentication failed on node-03
+operator note: credential rotation for api on node-03
+2026-09-30T10:18:10+00:00 INFO api request recovered
+trace_id=trace-08011
+retry_budget=3
+2026-09-30T10:18:24+00:00 INFO identity request started on node-04
+request_id=req-4112 route=/v1/identity/items
+{"service":"identity","request":"req-4112","host":"node-04"}
+2026-09-30T10:18:24+00:00 WARN identity latency 684ms exceeds 200ms
+METRIC identity.latency_ms=684
+2026-09-30T10:18:24+00:00 ERROR identity connection refused on node-04
+2026-09-30T10:18:26+00:00 ERROR identity connection refused on node-04
+operator note: upstream restart for identity on node-04
+2026-09-30T10:18:27+00:00 INFO identity request recovered
+trace_id=trace-08012
+retry_budget=0
+2026-09-30T10:18:41+00:00 INFO queue request started on node-05
+request_id=req-4113 route=/v1/queue/items
+{"service":"queue","request":"req-4113","host":"node-05"}
+2026-09-30T10:18:41+00:00 WARN queue latency 721ms exceeds 200ms
+METRIC queue.latency_ms=721
+2026-09-30T10:18:41+00:00 ERROR queue database timeout on node-05
+operator note: database failover for queue on node-05
+2026-09-30T10:18:44+00:00 INFO queue request recovered
+trace_id=trace-08013
+retry_budget=1
+2026-09-30T10:18:58+00:00 INFO catalog request started on node-06
+request_id=req-4114 route=/v1/catalog/items
+{"service":"catalog","request":"req-4114","host":"node-06"}
+2026-09-30T10:18:58+00:00 WARN catalog latency 758ms exceeds 200ms
+METRIC catalog.latency_ms=758
+2026-09-30T10:18:58+00:00 ERROR catalog database timeout on node-06
+operator note: database failover for catalog on node-06
+2026-09-30T10:19:01+00:00 INFO catalog request recovered
+trace_id=trace-08014
+retry_budget=2
+2026-09-30T10:19:15+00:00 INFO search request started on node-07
+request_id=req-4115 route=/v1/search/items
+{"service":"search","request":"req-4115","host":"node-07"}
+2026-09-30T10:19:15+00:00 WARN search latency 795ms exceeds 200ms
+METRIC search.latency_ms=795
+2026-09-30T10:19:15+00:00 ERROR search permission denied on node-07
+operator note: policy review for search on node-07
+2026-09-30T10:19:18+00:00 INFO search request recovered
+trace_id=trace-08015
+retry_budget=3
+2026-09-30T10:19:32+00:00 INFO api request started on node-08
+request_id=req-4116 route=/v1/api/items
+{"service":"api","request":"req-4116","host":"node-08"}
+2026-09-30T10:19:32+00:00 WARN api latency 832ms exceeds 200ms
+METRIC api.latency_ms=832
+2026-09-30T10:19:32+00:00 ERROR api out of memory on node-08
+2026-09-30T10:19:34+00:00 ERROR api out of memory on node-08
+operator note: worker replacement for api on node-08
+2026-09-30T10:19:35+00:00 INFO api request recovered
+trace_id=trace-08016
+retry_budget=0
+2026-09-30T10:19:49+00:00 INFO billing request started on node-09
+request_id=req-4117 route=/v1/billing/items
+{"service":"billing","request":"req-4117","host":"node-09"}
+2026-09-30T10:19:49+00:00 WARN billing latency 869ms exceeds 200ms
+METRIC billing.latency_ms=869
+2026-09-30T10:19:49+00:00 ERROR billing service unavailable on node-09
+operator note: rolling deployment for billing on node-09
+2026-09-30T10:19:52+00:00 INFO billing request recovered
+trace_id=trace-08017
+retry_budget=1
+2026-09-30T10:20:06+00:00 INFO queue request started on node-01
+request_id=req-4118 route=/v1/queue/items
+{"service":"queue","request":"req-4118","host":"node-01"}
+2026-09-30T10:20:06+00:00 WARN queue latency 906ms exceeds 200ms
+METRIC queue.latency_ms=906
+2026-09-30T10:20:06+00:00 ERROR queue authentication failed on node-01
+operator note: credential rotation for queue on node-01
+2026-09-30T10:20:09+00:00 INFO queue request recovered
+trace_id=trace-08018
+retry_budget=2
+2026-09-30T10:20:23+00:00 INFO catalog request started on node-02
+request_id=req-4119 route=/v1/catalog/items
+{"service":"catalog","request":"req-4119","host":"node-02"}
+2026-09-30T10:20:23+00:00 WARN catalog latency 943ms exceeds 200ms
+METRIC catalog.latency_ms=943
+2026-09-30T10:20:23+00:00 ERROR catalog connection refused on node-02
+operator note: upstream restart for catalog on node-02
+2026-09-30T10:20:26+00:00 INFO catalog request recovered
+trace_id=trace-08019
+retry_budget=3
+2026-09-30T10:20:40+00:00 INFO search request started on node-03
+request_id=req-4120 route=/v1/search/items
+{"service":"search","request":"req-4120","host":"node-03"}
+2026-09-30T10:20:40+00:00 WARN search latency 980ms exceeds 200ms
+METRIC search.latency_ms=980
+2026-09-30T10:20:40+00:00 ERROR search database timeout on node-03
+2026-09-30T10:20:42+00:00 ERROR search database timeout on node-03
+operator note: database failover for search on node-03
+2026-09-30T10:20:43+00:00 INFO search request recovered
+```python
+def retry_search():
+    return "database failover"
+```
+2026-09-30T10:20:57+00:00 INFO api request started on node-04
+request_id=req-4121 route=/v1/api/items
+{"service":"api","request":"req-4121","host":"node-04"}
+2026-09-30T10:20:57+00:00 WARN api latency 1017ms exceeds 200ms
+METRIC api.latency_ms=1017
+2026-09-30T10:20:57+00:00 ERROR api database timeout on node-04
+operator note: database failover for api on node-04
+2026-09-30T10:21:00+00:00 INFO api request recovered
+trace_id=trace-08021
+retry_budget=1
+2026-09-30T10:21:14+00:00 INFO billing request started on node-05
+request_id=req-4122 route=/v1/billing/items
+{"service":"billing","request":"req-4122","host":"node-05"}
+2026-09-30T10:21:14+00:00 WARN billing latency 1054ms exceeds 200ms
+METRIC billing.latency_ms=1054
+2026-09-30T10:21:14+00:00 ERROR billing permission denied on node-05
+operator note: policy review for billing on node-05
+2026-09-30T10:21:17+00:00 INFO billing request recovered
+trace_id=trace-08022
+retry_budget=2
+2026-09-30T10:21:31+00:00 INFO identity request started on node-06
+request_id=req-4123 route=/v1/identity/items
+{"service":"identity","request":"req-4123","host":"node-06"}
+2026-09-30T10:21:31+00:00 WARN identity latency 1091ms exceeds 200ms
+METRIC identity.latency_ms=1091
+2026-09-30T10:21:31+00:00 ERROR identity out of memory on node-06
+operator note: worker replacement for identity on node-06
+2026-09-30T10:21:34+00:00 INFO identity request recovered
+trace_id=trace-08023
+retry_budget=3
+2026-09-30T10:21:48+00:00 INFO catalog request started on node-07
+request_id=req-4124 route=/v1/catalog/items
+{"service":"catalog","request":"req-4124","host":"node-07"}
+2026-09-30T10:21:48+00:00 WARN catalog latency 1128ms exceeds 200ms
+METRIC catalog.latency_ms=1128
+2026-09-30T10:21:48+00:00 ERROR catalog service unavailable on node-07
+2026-09-30T10:21:50+00:00 ERROR catalog service unavailable on node-07
+operator note: rolling deployment for catalog on node-07
+2026-09-30T10:21:51+00:00 INFO catalog request recovered
+trace_id=trace-08024
+retry_budget=0
+2026-09-30T10:22:05+00:00 INFO search request started on node-08
+request_id=req-4125 route=/v1/search/items
+{"service":"search","request":"req-4125","host":"node-08"}
+2026-09-30T10:22:05+00:00 WARN search latency 265ms exceeds 200ms
+METRIC search.latency_ms=265
+2026-09-30T10:22:05+00:00 ERROR search authentication failed on node-08
+operator note: credential rotation for search on node-08
+2026-09-30T10:22:08+00:00 INFO search request recovered
+trace_id=trace-08025
+retry_budget=1
+2026-09-30T10:22:22+00:00 INFO api request started on node-09
+request_id=req-4126 route=/v1/api/items
+{"service":"api","request":"req-4126","host":"node-09"}
+2026-09-30T10:22:22+00:00 WARN api latency 302ms exceeds 200ms
+METRIC api.latency_ms=302
+2026-09-30T10:22:22+00:00 ERROR api connection refused on node-09
+operator note: upstream restart for api on node-09
+2026-09-30T10:22:25+00:00 INFO api request recovered
+trace_id=trace-08026
+retry_budget=2
+2026-09-30T10:22:39+00:00 INFO billing request started on node-01
+request_id=req-4127 route=/v1/billing/items
+{"service":"billing","request":"req-4127","host":"node-01"}
+2026-09-30T10:22:39+00:00 WARN billing latency 339ms exceeds 200ms
+METRIC billing.latency_ms=339
+2026-09-30T10:22:39+00:00 ERROR billing database timeout on node-01
+operator note: database failover for billing on node-01
+2026-09-30T10:22:42+00:00 INFO billing request recovered
+trace_id=trace-08027
+retry_budget=3
+2026-09-30T10:22:56+00:00 INFO identity request started on node-02
+request_id=req-4128 route=/v1/identity/items
+{"service":"identity","request":"req-4128","host":"node-02"}
+2026-09-30T10:22:56+00:00 WARN identity latency 376ms exceeds 200ms
+METRIC identity.latency_ms=376
+2026-09-30T10:22:56+00:00 ERROR identity database timeout on node-02
+2026-09-30T10:22:58+00:00 ERROR identity database timeout on node-02
+operator note: database failover for identity on node-02
+2026-09-30T10:22:59+00:00 INFO identity request recovered
+trace_id=trace-08028
+retry_budget=0
+2026-09-30T10:23:13+00:00 INFO queue request started on node-03
+request_id=req-4129 route=/v1/queue/items
+{"service":"queue","request":"req-4129","host":"node-03"}
+2026-09-30T10:23:13+00:00 WARN queue latency 413ms exceeds 200ms
+METRIC queue.latency_ms=413
+2026-09-30T10:23:13+00:00 ERROR queue permission denied on node-03
+operator note: policy review for queue on node-03
+2026-09-30T10:23:16+00:00 INFO queue request recovered
+trace_id=trace-08029
+retry_budget=1
+2026-09-30T10:23:30+00:00 INFO search request started on node-04
+request_id=req-4130 route=/v1/search/items
+{"service":"search","request":"req-4130","host":"node-04"}
+2026-09-30T10:23:30+00:00 WARN search latency 450ms exceeds 200ms
+METRIC search.latency_ms=450
+2026-09-30T10:23:30+00:00 ERROR search out of memory on node-04
+operator note: worker replacement for search on node-04
+2026-09-30T10:23:33+00:00 INFO search request recovered
+```python
+def retry_search():
+    return "worker replacement"
+```
+2026-09-30T10:23:47+00:00 INFO api request started on node-05
+request_id=req-4131 route=/v1/api/items
+{"service":"api","request":"req-4131","host":"node-05"}
+2026-09-30T10:23:47+00:00 WARN api latency 487ms exceeds 200ms
+METRIC api.latency_ms=487
+2026-09-30T10:23:47+00:00 ERROR api service unavailable on node-05
+operator note: rolling deployment for api on node-05
+2026-09-30T10:23:50+00:00 INFO api request recovered
+trace_id=trace-08031
+retry_budget=3
+2026-09-30T10:24:04+00:00 INFO billing request started on node-06
+request_id=req-4132 route=/v1/billing/items
+{"service":"billing","request":"req-4132","host":"node-06"}
+2026-09-30T10:24:04+00:00 WARN billing latency 524ms exceeds 200ms
+METRIC billing.latency_ms=524
+2026-09-30T10:24:04+00:00 ERROR billing authentication failed on node-06
+2026-09-30T10:24:06+00:00 ERROR billing authentication failed on node-06
+operator note: credential rotation for billing on node-06
+2026-09-30T10:24:07+00:00 INFO billing request recovered
+trace_id=trace-08032
+retry_budget=0
+2026-09-30T10:24:21+00:00 INFO identity request started on node-07
+request_id=req-4133 route=/v1/identity/items
+{"service":"identity","request":"req-4133","host":"node-07"}
+2026-09-30T10:24:21+00:00 WARN identity latency 561ms exceeds 200ms
+METRIC identity.latency_ms=561
+2026-09-30T10:24:21+00:00 ERROR identity connection refused on node-07
+operator note: upstream restart for identity on node-07
+2026-09-30T10:24:24+00:00 INFO identity request recovered
+trace_id=trace-08033
+retry_budget=1
+2026-09-30T10:24:38+00:00 INFO queue request started on node-08
+request_id=req-4134 route=/v1/queue/items
+{"service":"queue","request":"req-4134","host":"node-08"}
+2026-09-30T10:24:38+00:00 WARN queue latency 598ms exceeds 200ms
+METRIC queue.latency_ms=598
+2026-09-30T10:24:38+00:00 ERROR queue database timeout on node-08
+operator note: database failover for queue on node-08
+2026-09-30T10:24:41+00:00 INFO queue request recovered
+trace_id=trace-08034
+retry_budget=2
+2026-09-30T10:24:55+00:00 INFO catalog request started on node-09
+request_id=req-4135 route=/v1/catalog/items
+{"service":"catalog","request":"req-4135","host":"node-09"}
+2026-09-30T10:24:55+00:00 WARN catalog latency 635ms exceeds 200ms
+METRIC catalog.latency_ms=635
+2026-09-30T10:24:55+00:00 ERROR catalog database timeout on node-09
+operator note: database failover for catalog on node-09
+2026-09-30T10:24:58+00:00 INFO catalog request recovered
+trace_id=trace-08035
+retry_budget=3
+2026-09-30T10:25:12+00:00 INFO api request started on node-01
+request_id=req-4136 route=/v1/api/items
+{"service":"api","request":"req-4136","host":"node-01"}
+2026-09-30T10:25:12+00:00 WARN api latency 672ms exceeds 200ms
+METRIC api.latency_ms=672
+2026-09-30T10:25:12+00:00 ERROR api permission denied on node-01
+2026-09-30T10:25:14+00:00 ERROR api permission denied on node-01
+operator note: policy review for api on node-01
+2026-09-30T10:25:15+00:00 INFO api request recovered
+trace_id=trace-08036
+retry_budget=0
+2026-09-30T10:25:29+00:00 INFO billing request started on node-02
+request_id=req-4137 route=/v1/billing/items
+{"service":"billing","request":"req-4137","host":"node-02"}
+2026-09-30T10:25:29+00:00 WARN billing latency 709ms exceeds 200ms
+METRIC billing.latency_ms=709
+2026-09-30T10:25:29+00:00 ERROR billing out of memory on node-02
+operator note: worker replacement for billing on node-02
+2026-09-30T10:25:32+00:00 INFO billing request recovered
+trace_id=trace-08037
+retry_budget=1
+2026-09-30T10:25:46+00:00 INFO identity request started on node-03
+request_id=req-4138 route=/v1/identity/items
+{"service":"identity","request":"req-4138","host":"node-03"}
+2026-09-30T10:25:46+00:00 WARN identity latency 746ms exceeds 200ms
+METRIC identity.latency_ms=746
+2026-09-30T10:25:46+00:00 ERROR identity service unavailable on node-03
+operator note: rolling deployment for identity on node-03
+2026-09-30T10:25:49+00:00 INFO identity request recovered
+trace_id=trace-08038
+retry_budget=2
+2026-09-30T10:26:03+00:00 INFO queue request started on node-04
+request_id=req-4139 route=/v1/queue/items
+{"service":"queue","request":"req-4139","host":"node-04"}
+2026-09-30T10:26:03+00:00 WARN queue latency 783ms exceeds 200ms
+METRIC queue.latency_ms=783
+2026-09-30T10:26:03+00:00 ERROR queue authentication failed on node-04
+operator note: credential rotation for queue on node-04
+2026-09-30T10:26:06+00:00 INFO queue request recovered
+trace_id=trace-08039
+retry_budget=3
+2026-09-30T10:26:20+00:00 INFO catalog request started on node-05
+request_id=req-4140 route=/v1/catalog/items
+{"service":"catalog","request":"req-4140","host":"node-05"}
+2026-09-30T10:26:20+00:00 WARN catalog latency 820ms exceeds 200ms
+METRIC catalog.latency_ms=820
+2026-09-30T10:26:20+00:00 ERROR catalog connection refused on node-05
+2026-09-30T10:26:22+00:00 ERROR catalog connection refused on node-05
+operator note: upstream restart for catalog on node-05
+2026-09-30T10:26:23+00:00 INFO catalog request recovered
+```python
+def retry_catalog():
+    return "upstream restart"
+```
+2026-09-30T10:26:37+00:00 INFO search request started on node-06
+request_id=req-4141 route=/v1/search/items
+{"service":"search","request":"req-4141","host":"node-06"}
+2026-09-30T10:26:37+00:00 WARN search latency 857ms exceeds 200ms
+METRIC search.latency_ms=857
+2026-09-30T10:26:37+00:00 ERROR search database timeout on node-06
+operator note: database failover for search on node-06
+2026-09-30T10:26:40+00:00 INFO search request recovered
+trace_id=trace-08041
+retry_budget=1
+2026-09-30T10:26:54+00:00 INFO billing request started on node-07
+request_id=req-4142 route=/v1/billing/items
+{"service":"billing","request":"req-4142","host":"node-07"}
+2026-09-30T10:26:54+00:00 WARN billing latency 894ms exceeds 200ms
+METRIC billing.latency_ms=894
+2026-09-30T10:26:54+00:00 ERROR billing database timeout on node-07
+operator note: database failover for billing on node-07
+2026-09-30T10:26:57+00:00 INFO billing request recovered
+trace_id=trace-08042
+retry_budget=2
+2026-09-30T10:27:11+00:00 INFO identity request started on node-08
+request_id=req-4143 route=/v1/identity/items
+{"service":"identity","request":"req-4143","host":"node-08"}
+2026-09-30T10:27:11+00:00 WARN identity latency 931ms exceeds 200ms
+METRIC identity.latency_ms=931
+2026-09-30T10:27:11+00:00 ERROR identity permission denied on node-08
+operator note: policy review for identity on node-08
+2026-09-30T10:27:14+00:00 INFO identity request recovered
+trace_id=trace-08043
+retry_budget=3
+2026-09-30T10:27:28+00:00 INFO queue request started on node-09
+request_id=req-4144 route=/v1/queue/items
+{"service":"queue","request":"req-4144","host":"node-09"}
+2026-09-30T10:27:28+00:00 WARN queue latency 968ms exceeds 200ms
+METRIC queue.latency_ms=968
+2026-09-30T10:27:28+00:00 ERROR queue out of memory on node-09
+2026-09-30T10:27:30+00:00 ERROR queue out of memory on node-09
+operator note: worker replacement for queue on node-09
+2026-09-30T10:27:31+00:00 INFO queue request recovered
+trace_id=trace-08044
+retry_budget=0
+2026-09-30T10:27:45+00:00 INFO catalog request started on node-01
+request_id=req-4145 route=/v1/catalog/items
+{"service":"catalog","request":"req-4145","host":"node-01"}
+2026-09-30T10:27:45+00:00 WARN catalog latency 1005ms exceeds 200ms
+METRIC catalog.latency_ms=1005
+2026-09-30T10:27:45+00:00 ERROR catalog service unavailable on node-01
+operator note: rolling deployment for catalog on node-01
+2026-09-30T10:27:48+00:00 INFO catalog request recovered
+trace_id=trace-08045
+retry_budget=1
+2026-09-30T10:28:02+00:00 INFO search request started on node-02
+request_id=req-4146 route=/v1/search/items
+{"service":"search","request":"req-4146","host":"node-02"}
+2026-09-30T10:28:02+00:00 WARN search latency 1042ms exceeds 200ms
+METRIC search.latency_ms=1042
+2026-09-30T10:28:02+00:00 ERROR search authentication failed on node-02
+operator note: credential rotation for search on node-02
+2026-09-30T10:28:05+00:00 INFO search request recovered
+trace_id=trace-08046
+retry_budget=2
+2026-09-30T10:28:19+00:00 INFO api request started on node-03
+request_id=req-4147 route=/v1/api/items
+{"service":"api","request":"req-4147","host":"node-03"}
+2026-09-30T10:28:19+00:00 WARN api latency 1079ms exceeds 200ms
+METRIC api.latency_ms=1079
+2026-09-30T10:28:19+00:00 ERROR api connection refused on node-03
+operator note: upstream restart for api on node-03
+2026-09-30T10:28:22+00:00 INFO api request recovered
+trace_id=trace-08047
+retry_budget=3
+2026-09-30T10:28:36+00:00 INFO identity request started on node-04
+request_id=req-4148 route=/v1/identity/items
+{"service":"identity","request":"req-4148","host":"node-04"}
+2026-09-30T10:28:36+00:00 WARN identity latency 1116ms exceeds 200ms
+METRIC identity.latency_ms=1116
+2026-09-30T10:28:36+00:00 ERROR identity database timeout on node-04
+2026-09-30T10:28:38+00:00 ERROR identity database timeout on node-04
+operator note: database failover for identity on node-04
+2026-09-30T10:28:39+00:00 INFO identity request recovered
+trace_id=trace-08048
+retry_budget=0
+2026-09-30T10:28:53+00:00 INFO queue request started on node-05
+request_id=req-4149 route=/v1/queue/items
+{"service":"queue","request":"req-4149","host":"node-05"}
+2026-09-30T10:28:53+00:00 WARN queue latency 253ms exceeds 200ms
+METRIC queue.latency_ms=253
+2026-09-30T10:28:53+00:00 ERROR queue database timeout on node-05
+operator note: database failover for queue on node-05
+2026-09-30T10:28:56+00:00 INFO queue request recovered
+trace_id=trace-08049
+retry_budget=1
+2026-09-30T10:29:10+00:00 INFO catalog request started on node-06
+request_id=req-4150 route=/v1/catalog/items
+{"service":"catalog","request":"req-4150","host":"node-06"}
+2026-09-30T10:29:10+00:00 WARN catalog latency 290ms exceeds 200ms
+METRIC catalog.latency_ms=290
+2026-09-30T10:29:10+00:00 ERROR catalog permission denied on node-06
+operator note: policy review for catalog on node-06
+2026-09-30T10:29:13+00:00 INFO catalog request recovered
+```python
+def retry_catalog():
+    return "policy review"
+```
+2026-09-30T10:29:27+00:00 INFO search request started on node-07
+request_id=req-4151 route=/v1/search/items
+{"service":"search","request":"req-4151","host":"node-07"}
+2026-09-30T10:29:27+00:00 WARN search latency 327ms exceeds 200ms
+METRIC search.latency_ms=327
+2026-09-30T10:29:27+00:00 ERROR search out of memory on node-07
+operator note: worker replacement for search on node-07
+2026-09-30T10:29:30+00:00 INFO search request recovered
+trace_id=trace-08051
+retry_budget=3
+2026-09-30T10:29:44+00:00 INFO api request started on node-08
+request_id=req-4152 route=/v1/api/items
+{"service":"api","request":"req-4152","host":"node-08"}
+2026-09-30T10:29:44+00:00 WARN api latency 364ms exceeds 200ms
+METRIC api.latency_ms=364
+2026-09-30T10:29:44+00:00 ERROR api service unavailable on node-08
+2026-09-30T10:29:46+00:00 ERROR api service unavailable on node-08
+operator note: rolling deployment for api on node-08
+2026-09-30T10:29:47+00:00 INFO api request recovered
+trace_id=trace-08052
+retry_budget=0
+2026-09-30T10:30:01+00:00 INFO billing request started on node-09
+request_id=req-4153 route=/v1/billing/items
+{"service":"billing","request":"req-4153","host":"node-09"}
+2026-09-30T10:30:01+00:00 WARN billing latency 401ms exceeds 200ms
+METRIC billing.latency_ms=401
+2026-09-30T10:30:01+00:00 ERROR billing authentication failed on node-09
+operator note: credential rotation for billing on node-09
+2026-09-30T10:30:04+00:00 INFO billing request recovered
+trace_id=trace-08053
+retry_budget=1
+2026-09-30T10:30:18+00:00 INFO queue request started on node-01
+request_id=req-4154 route=/v1/queue/items
+{"service":"queue","request":"req-4154","host":"node-01"}
+2026-09-30T10:30:18+00:00 WARN queue latency 438ms exceeds 200ms
+METRIC queue.latency_ms=438
+2026-09-30T10:30:18+00:00 ERROR queue connection refused on node-01
+operator note: upstream restart for queue on node-01
+2026-09-30T10:30:21+00:00 INFO queue request recovered
+trace_id=trace-08054
+retry_budget=2
+2026-09-30T10:30:35+00:00 INFO catalog request started on node-02
+request_id=req-4155 route=/v1/catalog/items
+{"service":"catalog","request":"req-4155","host":"node-02"}
+2026-09-30T10:30:35+00:00 WARN catalog latency 475ms exceeds 200ms
+METRIC catalog.latency_ms=475
+2026-09-30T10:30:35+00:00 ERROR catalog database timeout on node-02
+operator note: database failover for catalog on node-02
+2026-09-30T10:30:38+00:00 INFO catalog request recovered
+trace_id=trace-08055
+retry_budget=3
+2026-09-30T10:30:52+00:00 INFO search request started on node-03
+request_id=req-4156 route=/v1/search/items
+{"service":"search","request":"req-4156","host":"node-03"}
+2026-09-30T10:30:52+00:00 WARN search latency 512ms exceeds 200ms
+METRIC search.latency_ms=512
+2026-09-30T10:30:52+00:00 ERROR search database timeout on node-03
+2026-09-30T10:30:54+00:00 ERROR search database timeout on node-03
+operator note: database failover for search on node-03
+2026-09-30T10:30:55+00:00 INFO search request recovered
+trace_id=trace-08056
+retry_budget=0
+2026-09-30T10:31:09+00:00 INFO api request started on node-04
+request_id=req-4157 route=/v1/api/items
+{"service":"api","request":"req-4157","host":"node-04"}
+2026-09-30T10:31:09+00:00 WARN api latency 549ms exceeds 200ms
+METRIC api.latency_ms=549
+2026-09-30T10:31:09+00:00 ERROR api permission denied on node-04
+operator note: policy review for api on node-04
+2026-09-30T10:31:12+00:00 INFO api request recovered
+trace_id=trace-08057
+retry_budget=1
+2026-09-30T10:31:26+00:00 INFO billing request started on node-05
+request_id=req-4158 route=/v1/billing/items
+{"service":"billing","request":"req-4158","host":"node-05"}
+2026-09-30T10:31:26+00:00 WARN billing latency 586ms exceeds 200ms
+METRIC billing.latency_ms=586
+2026-09-30T10:31:26+00:00 ERROR billing out of memory on node-05
+operator note: worker replacement for billing on node-05
+2026-09-30T10:31:29+00:00 INFO billing request recovered
+trace_id=trace-08058
+retry_budget=2
+2026-09-30T10:31:43+00:00 INFO identity request started on node-06
+request_id=req-4159 route=/v1/identity/items
+{"service":"identity","request":"req-4159","host":"node-06"}
+2026-09-30T10:31:43+00:00 WARN identity latency 623ms exceeds 200ms
+METRIC identity.latency_ms=623
+2026-09-30T10:31:43+00:00 ERROR identity service unavailable on node-06
+operator note: rolling deployment for identity on node-06
+2026-09-30T10:31:46+00:00 INFO identity request recovered
+trace_id=trace-08059
+retry_budget=3
+2026-09-30T10:32:00+00:00 INFO catalog request started on node-07
+request_id=req-4160 route=/v1/catalog/items
+{"service":"catalog","request":"req-4160","host":"node-07"}
+2026-09-30T10:32:00+00:00 WARN catalog latency 660ms exceeds 200ms
+METRIC catalog.latency_ms=660
+2026-09-30T10:32:00+00:00 ERROR catalog authentication failed on node-07
+2026-09-30T10:32:02+00:00 ERROR catalog authentication failed on node-07
+operator note: credential rotation for catalog on node-07
+2026-09-30T10:32:03+00:00 INFO catalog request recovered
+```python
+def retry_catalog():
+    return "credential rotation"
+```
+2026-09-30T10:32:17+00:00 INFO search request started on node-08
+request_id=req-4161 route=/v1/search/items
+{"service":"search","request":"req-4161","host":"node-08"}
+2026-09-30T10:32:17+00:00 WARN search latency 697ms exceeds 200ms
+METRIC search.latency_ms=697
+2026-09-30T10:32:17+00:00 ERROR search connection refused on node-08
+operator note: upstream restart for search on node-08
+2026-09-30T10:32:20+00:00 INFO search request recovered
+trace_id=trace-08061
+retry_budget=1
+2026-09-30T10:32:34+00:00 INFO api request started on node-09
+request_id=req-4162 route=/v1/api/items
+{"service":"api","request":"req-4162","host":"node-09"}
+2026-09-30T10:32:34+00:00 WARN api latency 734ms exceeds 200ms
+METRIC api.latency_ms=734
+2026-09-30T10:32:34+00:00 ERROR api database timeout on node-09
+operator note: database failover for api on node-09
+2026-09-30T10:32:37+00:00 INFO api request recovered
+trace_id=trace-08062
+retry_budget=2
+2026-09-30T10:32:51+00:00 INFO billing request started on node-01
+request_id=req-4163 route=/v1/billing/items
+{"service":"billing","request":"req-4163","host":"node-01"}
+2026-09-30T10:32:51+00:00 WARN billing latency 771ms exceeds 200ms
+METRIC billing.latency_ms=771
+2026-09-30T10:32:51+00:00 ERROR billing database timeout on node-01
+operator note: database failover for billing on node-01
+2026-09-30T10:32:54+00:00 INFO billing request recovered
+trace_id=trace-08063
+retry_budget=3
+2026-09-30T10:33:08+00:00 INFO identity request started on node-02
+request_id=req-4164 route=/v1/identity/items
+{"service":"identity","request":"req-4164","host":"node-02"}
+2026-09-30T10:33:08+00:00 WARN identity latency 808ms exceeds 200ms
+METRIC identity.latency_ms=808
+2026-09-30T10:33:08+00:00 ERROR identity permission denied on node-02
+2026-09-30T10:33:10+00:00 ERROR identity permission denied on node-02
+operator note: policy review for identity on node-02
+2026-09-30T10:33:11+00:00 INFO identity request recovered
+trace_id=trace-08064
+retry_budget=0
+2026-09-30T10:33:25+00:00 INFO queue request started on node-03
+request_id=req-4165 route=/v1/queue/items
+{"service":"queue","request":"req-4165","host":"node-03"}
+2026-09-30T10:33:25+00:00 WARN queue latency 845ms exceeds 200ms
+METRIC queue.latency_ms=845
+2026-09-30T10:33:25+00:00 ERROR queue out of memory on node-03
+operator note: worker replacement for queue on node-03
+2026-09-30T10:33:28+00:00 INFO queue request recovered
+trace_id=trace-08065
+retry_budget=1
+2026-09-30T10:33:42+00:00 INFO search request started on node-04
+request_id=req-4166 route=/v1/search/items
+{"service":"search","request":"req-4166","host":"node-04"}
+2026-09-30T10:33:42+00:00 WARN search latency 882ms exceeds 200ms
+METRIC search.latency_ms=882
+2026-09-30T10:33:42+00:00 ERROR search service unavailable on node-04
+operator note: rolling deployment for search on node-04
+2026-09-30T10:33:45+00:00 INFO search request recovered
+trace_id=trace-08066
+retry_budget=2
+2026-09-30T10:33:59+00:00 INFO api request started on node-05
+request_id=req-4167 route=/v1/api/items
+{"service":"api","request":"req-4167","host":"node-05"}
+2026-09-30T10:33:59+00:00 WARN api latency 919ms exceeds 200ms
+METRIC api.latency_ms=919
+2026-09-30T10:33:59+00:00 ERROR api authentication failed on node-05
+operator note: credential rotation for api on node-05
+2026-09-30T10:34:02+00:00 INFO api request recovered
+trace_id=trace-08067
+retry_budget=3
+2026-09-30T10:34:16+00:00 INFO billing request started on node-06
+request_id=req-4168 route=/v1/billing/items
+{"service":"billing","request":"req-4168","host":"node-06"}
+2026-09-30T10:34:16+00:00 WARN billing latency 956ms exceeds 200ms
+METRIC billing.latency_ms=956
+2026-09-30T10:34:16+00:00 ERROR billing connection refused on node-06
+2026-09-30T10:34:18+00:00 ERROR billing connection refused on node-06
+operator note: upstream restart for billing on node-06
+2026-09-30T10:34:19+00:00 INFO billing request recovered
+trace_id=trace-08068
+retry_budget=0
+2026-09-30T10:34:33+00:00 INFO identity request started on node-07
+request_id=req-4169 route=/v1/identity/items
+{"service":"identity","request":"req-4169","host":"node-07"}
+2026-09-30T10:34:33+00:00 WARN identity latency 993ms exceeds 200ms
+METRIC identity.latency_ms=993
+2026-09-30T10:34:33+00:00 ERROR identity database timeout on node-07
+operator note: database failover for identity on node-07
+2026-09-30T10:34:36+00:00 INFO identity request recovered
+trace_id=trace-08069
+retry_budget=1
+2026-09-30T10:34:50+00:00 INFO queue request started on node-08
+request_id=req-4170 route=/v1/queue/items
+{"service":"queue","request":"req-4170","host":"node-08"}
+2026-09-30T10:34:50+00:00 WARN queue latency 1030ms exceeds 200ms
+METRIC queue.latency_ms=1030
+2026-09-30T10:34:50+00:00 ERROR queue database timeout on node-08
+operator note: database failover for queue on node-08
+2026-09-30T10:34:53+00:00 INFO queue request recovered
+```python
+def retry_queue():
+    return "database failover"
+```
+2026-09-30T10:35:07+00:00 INFO catalog request started on node-09
+request_id=req-4171 route=/v1/catalog/items
+{"service":"catalog","request":"req-4171","host":"node-09"}
+2026-09-30T10:35:07+00:00 WARN catalog latency 1067ms exceeds 200ms
+METRIC catalog.latency_ms=1067
+2026-09-30T10:35:07+00:00 ERROR catalog permission denied on node-09
+operator note: policy review for catalog on node-09
+2026-09-30T10:35:10+00:00 INFO catalog request recovered
+trace_id=trace-08071
+retry_budget=3
+2026-09-30T10:35:24+00:00 INFO api request started on node-01
+request_id=req-4172 route=/v1/api/items
+{"service":"api","request":"req-4172","host":"node-01"}
+2026-09-30T10:35:24+00:00 WARN api latency 1104ms exceeds 200ms
+METRIC api.latency_ms=1104
+2026-09-30T10:35:24+00:00 ERROR api out of memory on node-01
+2026-09-30T10:35:26+00:00 ERROR api out of memory on node-01
+operator note: worker replacement for api on node-01
+2026-09-30T10:35:27+00:00 INFO api request recovered
+trace_id=trace-08072
+retry_budget=0
+2026-09-30T10:35:41+00:00 INFO billing request started on node-02
+request_id=req-4173 route=/v1/billing/items
+{"service":"billing","request":"req-4173","host":"node-02"}
+2026-09-30T10:35:41+00:00 WARN billing latency 241ms exceeds 200ms
+METRIC billing.latency_ms=241
+2026-09-30T10:35:41+00:00 ERROR billing service unavailable on node-02
+operator note: rolling deployment for billing on node-02
+2026-09-30T10:35:44+00:00 INFO billing request recovered
+trace_id=trace-08073
+retry_budget=1
+2026-09-30T10:35:58+00:00 INFO identity request started on node-03
+request_id=req-4174 route=/v1/identity/items
+{"service":"identity","request":"req-4174","host":"node-03"}
+2026-09-30T10:35:58+00:00 WARN identity latency 278ms exceeds 200ms
+METRIC identity.latency_ms=278
+2026-09-30T10:35:58+00:00 ERROR identity authentication failed on node-03
+operator note: credential rotation for identity on node-03
+2026-09-30T10:36:01+00:00 INFO identity request recovered
+trace_id=trace-08074
+retry_budget=2
+2026-09-30T10:36:15+00:00 INFO queue request started on node-04
+request_id=req-4175 route=/v1/queue/items
+{"service":"queue","request":"req-4175","host":"node-04"}
+2026-09-30T10:36:15+00:00 WARN queue latency 315ms exceeds 200ms
+METRIC queue.latency_ms=315
+2026-09-30T10:36:15+00:00 ERROR queue connection refused on node-04
+operator note: upstream restart for queue on node-04
+2026-09-30T10:36:18+00:00 INFO queue request recovered
+trace_id=trace-08075
+retry_budget=3
+2026-09-30T10:36:32+00:00 INFO catalog request started on node-05
+request_id=req-4176 route=/v1/catalog/items
+{"service":"catalog","request":"req-4176","host":"node-05"}
+2026-09-30T10:36:32+00:00 WARN catalog latency 352ms exceeds 200ms
+METRIC catalog.latency_ms=352
+2026-09-30T10:36:32+00:00 ERROR catalog database timeout on node-05
+2026-09-30T10:36:34+00:00 ERROR catalog database timeout on node-05
+operator note: database failover for catalog on node-05
+2026-09-30T10:36:35+00:00 INFO catalog request recovered
+trace_id=trace-08076
+retry_budget=0
+2026-09-30T10:36:49+00:00 INFO search request started on node-06
+request_id=req-4177 route=/v1/search/items
+{"service":"search","request":"req-4177","host":"node-06"}
+2026-09-30T10:36:49+00:00 WARN search latency 389ms exceeds 200ms
+METRIC search.latency_ms=389
+2026-09-30T10:36:49+00:00 ERROR search database timeout on node-06
+operator note: database failover for search on node-06
+2026-09-30T10:36:52+00:00 INFO search request recovered
+trace_id=trace-08077
+retry_budget=1
+2026-09-30T10:37:06+00:00 INFO billing request started on node-07
+request_id=req-4178 route=/v1/billing/items
+{"service":"billing","request":"req-4178","host":"node-07"}
+2026-09-30T10:37:06+00:00 WARN billing latency 426ms exceeds 200ms
+METRIC billing.latency_ms=426
+2026-09-30T10:37:06+00:00 ERROR billing permission denied on node-07
+operator note: policy review for billing on node-07
+2026-09-30T10:37:09+00:00 INFO billing request recovered
+trace_id=trace-08078
+retry_budget=2
+2026-09-30T10:37:23+00:00 INFO identity request started on node-08
+request_id=req-4179 route=/v1/identity/items
+{"service":"identity","request":"req-4179","host":"node-08"}
+2026-09-30T10:37:23+00:00 WARN identity latency 463ms exceeds 200ms
+METRIC identity.latency_ms=463
+2026-09-30T10:37:23+00:00 ERROR identity out of memory on node-08
+operator note: worker replacement for identity on node-08
+2026-09-30T10:37:26+00:00 INFO identity request recovered
+trace_id=trace-08079
+retry_budget=3
+2026-09-30T10:37:40+00:00 INFO queue request started on node-09
+request_id=req-4180 route=/v1/queue/items
+{"service":"queue","request":"req-4180","host":"node-09"}
+2026-09-30T10:37:40+00:00 WARN queue latency 500ms exceeds 200ms
+METRIC queue.latency_ms=500
+2026-09-30T10:37:40+00:00 ERROR queue service unavailable on node-09
+2026-09-30T10:37:42+00:00 ERROR queue service unavailable on node-09
+operator note: rolling deployment for queue on node-09
+2026-09-30T10:37:43+00:00 INFO queue request recovered
+```python
+def retry_queue():
+    return "rolling deployment"
+```
+2026-09-30T10:37:57+00:00 INFO catalog request started on node-01
+request_id=req-4181 route=/v1/catalog/items
+{"service":"catalog","request":"req-4181","host":"node-01"}
+2026-09-30T10:37:57+00:00 WARN catalog latency 537ms exceeds 200ms
+METRIC catalog.latency_ms=537
+2026-09-30T10:37:57+00:00 ERROR catalog authentication failed on node-01
+operator note: credential rotation for catalog on node-01
+2026-09-30T10:38:00+00:00 INFO catalog request recovered
+trace_id=trace-08081
+retry_budget=1
+2026-09-30T10:38:14+00:00 INFO search request started on node-02
+request_id=req-4182 route=/v1/search/items
+{"service":"search","request":"req-4182","host":"node-02"}
+2026-09-30T10:38:14+00:00 WARN search latency 574ms exceeds 200ms
+METRIC search.latency_ms=574
+2026-09-30T10:38:14+00:00 ERROR search connection refused on node-02
+operator note: upstream restart for search on node-02
+2026-09-30T10:38:17+00:00 INFO search request recovered
+trace_id=trace-08082
+retry_budget=2
+2026-09-30T10:38:31+00:00 INFO api request started on node-03
+request_id=req-4183 route=/v1/api/items
+{"service":"api","request":"req-4183","host":"node-03"}
+2026-09-30T10:38:31+00:00 WARN api latency 611ms exceeds 200ms
+METRIC api.latency_ms=611
+2026-09-30T10:38:31+00:00 ERROR api database timeout on node-03
+operator note: database failover for api on node-03
+2026-09-30T10:38:34+00:00 INFO api request recovered
+trace_id=trace-08083
+retry_budget=3
+2026-09-30T10:38:48+00:00 INFO identity request started on node-04
+request_id=req-4184 route=/v1/identity/items
+{"service":"identity","request":"req-4184","host":"node-04"}
+2026-09-30T10:38:48+00:00 WARN identity latency 648ms exceeds 200ms
+METRIC identity.latency_ms=648
+2026-09-30T10:38:48+00:00 ERROR identity database timeout on node-04
+2026-09-30T10:38:50+00:00 ERROR identity database timeout on node-04
+operator note: database failover for identity on node-04
+2026-09-30T10:38:51+00:00 INFO identity request recovered
+trace_id=trace-08084
+retry_budget=0
+2026-09-30T10:39:05+00:00 INFO queue request started on node-05
+request_id=req-4185 route=/v1/queue/items
+{"service":"queue","request":"req-4185","host":"node-05"}
+2026-09-30T10:39:05+00:00 WARN queue latency 685ms exceeds 200ms
+METRIC queue.latency_ms=685
+2026-09-30T10:39:05+00:00 ERROR queue permission denied on node-05
+operator note: policy review for queue on node-05
+2026-09-30T10:39:08+00:00 INFO queue request recovered
+trace_id=trace-08085
+retry_budget=1
+2026-09-30T10:39:22+00:00 INFO catalog request started on node-06
+request_id=req-4186 route=/v1/catalog/items
+{"service":"catalog","request":"req-4186","host":"node-06"}
+2026-09-30T10:39:22+00:00 WARN catalog latency 722ms exceeds 200ms
+METRIC catalog.latency_ms=722
+2026-09-30T10:39:22+00:00 ERROR catalog out of memory on node-06
+operator note: worker replacement for catalog on node-06
+2026-09-30T10:39:25+00:00 INFO catalog request recovered
+trace_id=trace-08086
+retry_budget=2
+2026-09-30T10:39:39+00:00 INFO search request started on node-07
+request_id=req-4187 route=/v1/search/items
+{"service":"search","request":"req-4187","host":"node-07"}
+2026-09-30T10:39:39+00:00 WARN search latency 759ms exceeds 200ms
+METRIC search.latency_ms=759
+2026-09-30T10:39:39+00:00 ERROR search service unavailable on node-07
+operator note: rolling deployment for search on node-07
+2026-09-30T10:39:42+00:00 INFO search request recovered
+trace_id=trace-08087
+retry_budget=3
+2026-09-30T10:39:56+00:00 INFO api request started on node-08
+request_id=req-4188 route=/v1/api/items
+{"service":"api","request":"req-4188","host":"node-08"}
+2026-09-30T10:39:56+00:00 WARN api latency 796ms exceeds 200ms
+METRIC api.latency_ms=796
+2026-09-30T10:39:56+00:00 ERROR api authentication failed on node-08
+2026-09-30T10:39:58+00:00 ERROR api authentication failed on node-08
+operator note: credential rotation for api on node-08
+2026-09-30T10:39:59+00:00 INFO api request recovered
+trace_id=trace-08088
+retry_budget=0
+2026-09-30T10:40:13+00:00 INFO billing request started on node-09
+request_id=req-4189 route=/v1/billing/items
+{"service":"billing","request":"req-4189","host":"node-09"}
+2026-09-30T10:40:13+00:00 WARN billing latency 833ms exceeds 200ms
+METRIC billing.latency_ms=833
+2026-09-30T10:40:13+00:00 ERROR billing connection refused on node-09
+operator note: upstream restart for billing on node-09
+2026-09-30T10:40:16+00:00 INFO billing request recovered
+trace_id=trace-08089
+retry_budget=1
+2026-09-30T10:40:30+00:00 INFO queue request started on node-01
+request_id=req-4190 route=/v1/queue/items
+{"service":"queue","request":"req-4190","host":"node-01"}
+2026-09-30T10:40:30+00:00 WARN queue latency 870ms exceeds 200ms
+METRIC queue.latency_ms=870
+2026-09-30T10:40:30+00:00 ERROR queue database timeout on node-01
+operator note: database failover for queue on node-01
+2026-09-30T10:40:33+00:00 INFO queue request recovered
+```python
+def retry_queue():
+    return "database failover"
+```
+2026-09-30T10:40:47+00:00 INFO catalog request started on node-02
+request_id=req-4191 route=/v1/catalog/items
+{"service":"catalog","request":"req-4191","host":"node-02"}
+2026-09-30T10:40:47+00:00 WARN catalog latency 907ms exceeds 200ms
+METRIC catalog.latency_ms=907
+2026-09-30T10:40:47+00:00 ERROR catalog database timeout on node-02
+operator note: database failover for catalog on node-02
+2026-09-30T10:40:50+00:00 INFO catalog request recovered
+trace_id=trace-08091
+retry_budget=3
+2026-09-30T10:41:04+00:00 INFO search request started on node-03
+request_id=req-4192 route=/v1/search/items
+{"service":"search","request":"req-4192","host":"node-03"}
+2026-09-30T10:41:04+00:00 WARN search latency 944ms exceeds 200ms
+METRIC search.latency_ms=944
+2026-09-30T10:41:04+00:00 ERROR search permission denied on node-03
+2026-09-30T10:41:06+00:00 ERROR search permission denied on node-03
+operator note: policy review for search on node-03
+2026-09-30T10:41:07+00:00 INFO search request recovered
+trace_id=trace-08092
+retry_budget=0
+2026-09-30T10:41:21+00:00 INFO api request started on node-04
+request_id=req-4193 route=/v1/api/items
+{"service":"api","request":"req-4193","host":"node-04"}
+2026-09-30T10:41:21+00:00 WARN api latency 981ms exceeds 200ms
+METRIC api.latency_ms=981
+2026-09-30T10:41:21+00:00 ERROR api out of memory on node-04
+operator note: worker replacement for api on node-04
+2026-09-30T10:41:24+00:00 INFO api request recovered
+trace_id=trace-08093
+retry_budget=1
+2026-09-30T10:41:38+00:00 INFO billing request started on node-05
+request_id=req-4194 route=/v1/billing/items
+{"service":"billing","request":"req-4194","host":"node-05"}
+2026-09-30T10:41:38+00:00 WARN billing latency 1018ms exceeds 200ms
+METRIC billing.latency_ms=1018
+2026-09-30T10:41:38+00:00 ERROR billing service unavailable on node-05
+operator note: rolling deployment for billing on node-05
+2026-09-30T10:41:41+00:00 INFO billing request recovered
+trace_id=trace-08094
+retry_budget=2
+2026-09-30T10:41:55+00:00 INFO identity request started on node-06
+request_id=req-4195 route=/v1/identity/items
+{"service":"identity","request":"req-4195","host":"node-06"}
+2026-09-30T10:41:55+00:00 WARN identity latency 1055ms exceeds 200ms
+METRIC identity.latency_ms=1055
+2026-09-30T10:41:55+00:00 ERROR identity authentication failed on node-06
+operator note: credential rotation for identity on node-06
+2026-09-30T10:41:58+00:00 INFO identity request recovered
+trace_id=trace-08095
+retry_budget=3
+2026-09-30T10:42:12+00:00 INFO catalog request started on node-07
+request_id=req-4196 route=/v1/catalog/items
+{"service":"catalog","request":"req-4196","host":"node-07"}
+2026-09-30T10:42:12+00:00 WARN catalog latency 1092ms exceeds 200ms
+METRIC catalog.latency_ms=1092
+2026-09-30T10:42:12+00:00 ERROR catalog connection refused on node-07
+2026-09-30T10:42:14+00:00 ERROR catalog connection refused on node-07
+operator note: upstream restart for catalog on node-07
+2026-09-30T10:42:15+00:00 INFO catalog request recovered
+trace_id=trace-08096
+retry_budget=0
+2026-09-30T10:42:29+00:00 INFO search request started on node-08
+request_id=req-4197 route=/v1/search/items
+{"service":"search","request":"req-4197","host":"node-08"}
+2026-09-30T10:42:29+00:00 WARN search latency 1129ms exceeds 200ms
+METRIC search.latency_ms=1129
+2026-09-30T10:42:29+00:00 ERROR search database timeout on node-08
+operator note: database failover for search on node-08
+2026-09-30T10:42:32+00:00 INFO search request recovered
+trace_id=trace-08097
+retry_budget=1
+2026-09-30T10:42:46+00:00 INFO api request started on node-09
+request_id=req-4198 route=/v1/api/items
+{"service":"api","request":"req-4198","host":"node-09"}
+2026-09-30T10:42:46+00:00 WARN api latency 266ms exceeds 200ms
+METRIC api.latency_ms=266
+2026-09-30T10:42:46+00:00 ERROR api database timeout on node-09
+operator note: database failover for api on node-09
+2026-09-30T10:42:49+00:00 INFO api request recovered
+trace_id=trace-08098
+retry_budget=2
+2026-09-30T10:43:03+00:00 INFO billing request started on node-01
+request_id=req-4199 route=/v1/billing/items
+{"service":"billing","request":"req-4199","host":"node-01"}
+2026-09-30T10:43:03+00:00 WARN billing latency 303ms exceeds 200ms
+METRIC billing.latency_ms=303
+2026-09-30T10:43:03+00:00 ERROR billing permission denied on node-01
+operator note: policy review for billing on node-01
+2026-09-30T10:43:06+00:00 INFO billing request recovered
+trace_id=trace-08099
+retry_budget=3
+2026-09-30T10:43:20+00:00 INFO identity request started on node-02
+request_id=req-4200 route=/v1/identity/items
+{"service":"identity","request":"req-4200","host":"node-02"}
+2026-09-30T10:43:20+00:00 WARN identity latency 340ms exceeds 200ms
+METRIC identity.latency_ms=340
+2026-09-30T10:43:20+00:00 ERROR identity out of memory on node-02
+2026-09-30T10:43:22+00:00 ERROR identity out of memory on node-02
+operator note: worker replacement for identity on node-02
+2026-09-30T10:43:23+00:00 INFO identity request recovered
+```python
+def retry_identity():
+    return "worker replacement"
+```
+2026-09-30T10:43:37+00:00 INFO queue request started on node-03
+request_id=req-4201 route=/v1/queue/items
+{"service":"queue","request":"req-4201","host":"node-03"}
+2026-09-30T10:43:37+00:00 WARN queue latency 377ms exceeds 200ms
+METRIC queue.latency_ms=377
+2026-09-30T10:43:37+00:00 ERROR queue service unavailable on node-03
+operator note: rolling deployment for queue on node-03
+2026-09-30T10:43:40+00:00 INFO queue request recovered
+trace_id=trace-08101
+retry_budget=1
+2026-09-30T10:43:54+00:00 INFO search request started on node-04
+request_id=req-4202 route=/v1/search/items
+{"service":"search","request":"req-4202","host":"node-04"}
+2026-09-30T10:43:54+00:00 WARN search latency 414ms exceeds 200ms
+METRIC search.latency_ms=414
+2026-09-30T10:43:54+00:00 ERROR search authentication failed on node-04
+operator note: credential rotation for search on node-04
+2026-09-30T10:43:57+00:00 INFO search request recovered
+trace_id=trace-08102
+retry_budget=2
+2026-09-30T10:44:11+00:00 INFO api request started on node-05
+request_id=req-4203 route=/v1/api/items
+{"service":"api","request":"req-4203","host":"node-05"}
+2026-09-30T10:44:11+00:00 WARN api latency 451ms exceeds 200ms
+METRIC api.latency_ms=451
+2026-09-30T10:44:11+00:00 ERROR api connection refused on node-05
+operator note: upstream restart for api on node-05
+2026-09-30T10:44:14+00:00 INFO api request recovered
+trace_id=trace-08103
+retry_budget=3
+2026-09-30T10:44:28+00:00 INFO billing request started on node-06
+request_id=req-4204 route=/v1/billing/items
+{"service":"billing","request":"req-4204","host":"node-06"}
+2026-09-30T10:44:28+00:00 WARN billing latency 488ms exceeds 200ms
+METRIC billing.latency_ms=488
+2026-09-30T10:44:28+00:00 ERROR billing database timeout on node-06
+2026-09-30T10:44:30+00:00 ERROR billing database timeout on node-06
+operator note: database failover for billing on node-06
+2026-09-30T10:44:31+00:00 INFO billing request recovered
+trace_id=trace-08104
+retry_budget=0
+2026-09-30T10:44:45+00:00 INFO identity request started on node-07
+request_id=req-4205 route=/v1/identity/items
+{"service":"identity","request":"req-4205","host":"node-07"}
+2026-09-30T10:44:45+00:00 WARN identity latency 525ms exceeds 200ms
+METRIC identity.latency_ms=525
+2026-09-30T10:44:45+00:00 ERROR identity database timeout on node-07
+operator note: database failover for identity on node-07
+2026-09-30T10:44:48+00:00 INFO identity request recovered
+trace_id=trace-08105
+retry_budget=1
+2026-09-30T10:45:02+00:00 INFO queue request started on node-08
+request_id=req-4206 route=/v1/queue/items
+{"service":"queue","request":"req-4206","host":"node-08"}
+2026-09-30T10:45:02+00:00 WARN queue latency 562ms exceeds 200ms
+METRIC queue.latency_ms=562
+2026-09-30T10:45:02+00:00 ERROR queue permission denied on node-08
+operator note: policy review for queue on node-08
+2026-09-30T10:45:05+00:00 INFO queue request recovered
+trace_id=trace-08106
+retry_budget=2
+2026-09-30T10:45:19+00:00 INFO catalog request started on node-09
+request_id=req-4207 route=/v1/catalog/items
+{"service":"catalog","request":"req-4207","host":"node-09"}
+2026-09-30T10:45:19+00:00 WARN catalog latency 599ms exceeds 200ms
+METRIC catalog.latency_ms=599
+2026-09-30T10:45:19+00:00 ERROR catalog out of memory on node-09
+operator note: worker replacement for catalog on node-09
+2026-09-30T10:45:22+00:00 INFO catalog request recovered
+trace_id=trace-08107
+retry_budget=3
+2026-09-30T10:45:36+00:00 INFO api request started on node-01
+request_id=req-4208 route=/v1/api/items
+{"service":"api","request":"req-4208","host":"node-01"}
+2026-09-30T10:45:36+00:00 WARN api latency 636ms exceeds 200ms
+METRIC api.latency_ms=636
+2026-09-30T10:45:36+00:00 ERROR api service unavailable on node-01
+2026-09-30T10:45:38+00:00 ERROR api service unavailable on node-01
+operator note: rolling deployment for api on node-01
+2026-09-30T10:45:39+00:00 INFO api request recovered
+trace_id=trace-08108
+retry_budget=0
+2026-09-30T10:45:53+00:00 INFO billing request started on node-02
+request_id=req-4209 route=/v1/billing/items
+{"service":"billing","request":"req-4209","host":"node-02"}
+2026-09-30T10:45:53+00:00 WARN billing latency 673ms exceeds 200ms
+METRIC billing.latency_ms=673
+2026-09-30T10:45:53+00:00 ERROR billing authentication failed on node-02
+operator note: credential rotation for billing on node-02
+2026-09-30T10:45:56+00:00 INFO billing request recovered
+trace_id=trace-08109
+retry_budget=1
+2026-09-30T10:46:10+00:00 INFO identity request started on node-03
+request_id=req-4210 route=/v1/identity/items
+{"service":"identity","request":"req-4210","host":"node-03"}
+2026-09-30T10:46:10+00:00 WARN identity latency 710ms exceeds 200ms
+METRIC identity.latency_ms=710
+2026-09-30T10:46:10+00:00 ERROR identity connection refused on node-03
+operator note: upstream restart for identity on node-03
+2026-09-30T10:46:13+00:00 INFO identity request recovered
+```python
+def retry_identity():
+    return "upstream restart"
+```
+2026-09-30T10:46:27+00:00 INFO queue request started on node-04
+request_id=req-4211 route=/v1/queue/items
+{"service":"queue","request":"req-4211","host":"node-04"}
+2026-09-30T10:46:27+00:00 WARN queue latency 747ms exceeds 200ms
+METRIC queue.latency_ms=747
+2026-09-30T10:46:27+00:00 ERROR queue database timeout on node-04
+operator note: database failover for queue on node-04
+2026-09-30T10:46:30+00:00 INFO queue request recovered
+trace_id=trace-08111
+retry_budget=3
+2026-09-30T10:46:44+00:00 INFO catalog request started on node-05
+request_id=req-4212 route=/v1/catalog/items
+{"service":"catalog","request":"req-4212","host":"node-05"}
+2026-09-30T10:46:44+00:00 WARN catalog latency 784ms exceeds 200ms
+METRIC catalog.latency_ms=784
+2026-09-30T10:46:44+00:00 ERROR catalog database timeout on node-05
+2026-09-30T10:46:46+00:00 ERROR catalog database timeout on node-05
+operator note: database failover for catalog on node-05
+2026-09-30T10:46:47+00:00 INFO catalog request recovered
+trace_id=trace-08112
+retry_budget=0
+2026-09-30T10:47:01+00:00 INFO search request started on node-06
+request_id=req-4213 route=/v1/search/items
+{"service":"search","request":"req-4213","host":"node-06"}
+2026-09-30T10:47:01+00:00 WARN search latency 821ms exceeds 200ms
+METRIC search.latency_ms=821
+2026-09-30T10:47:01+00:00 ERROR search permission denied on node-06
+operator note: policy review for search on node-06
+2026-09-30T10:47:04+00:00 INFO search request recovered
+trace_id=trace-08113
+retry_budget=1
+2026-09-30T10:47:18+00:00 INFO billing request started on node-07
+request_id=req-4214 route=/v1/billing/items
+{"service":"billing","request":"req-4214","host":"node-07"}
+2026-09-30T10:47:18+00:00 WARN billing latency 858ms exceeds 200ms
+METRIC billing.latency_ms=858
+2026-09-30T10:47:18+00:00 ERROR billing out of memory on node-07
+operator note: worker replacement for billing on node-07
+2026-09-30T10:47:21+00:00 INFO billing request recovered
+trace_id=trace-08114
+retry_budget=2
+2026-09-30T10:47:35+00:00 INFO identity request started on node-08
+request_id=req-4215 route=/v1/identity/items
+{"service":"identity","request":"req-4215","host":"node-08"}
+2026-09-30T10:47:35+00:00 WARN identity latency 895ms exceeds 200ms
+METRIC identity.latency_ms=895
+2026-09-30T10:47:35+00:00 ERROR identity service unavailable on node-08
+operator note: rolling deployment for identity on node-08
+2026-09-30T10:47:38+00:00 INFO identity request recovered
+trace_id=trace-08115
+retry_budget=3
+2026-09-30T10:47:52+00:00 INFO queue request started on node-09
+request_id=req-4216 route=/v1/queue/items
+{"service":"queue","request":"req-4216","host":"node-09"}
+2026-09-30T10:47:52+00:00 WARN queue latency 932ms exceeds 200ms
+METRIC queue.latency_ms=932
+2026-09-30T10:47:52+00:00 ERROR queue authentication failed on node-09
+2026-09-30T10:47:54+00:00 ERROR queue authentication failed on node-09
+operator note: credential rotation for queue on node-09
+2026-09-30T10:47:55+00:00 INFO queue request recovered
+trace_id=trace-08116
+retry_budget=0
+2026-09-30T10:48:09+00:00 INFO catalog request started on node-01
+request_id=req-4217 route=/v1/catalog/items
+{"service":"catalog","request":"req-4217","host":"node-01"}
+2026-09-30T10:48:09+00:00 WARN catalog latency 969ms exceeds 200ms
+METRIC catalog.latency_ms=969
+2026-09-30T10:48:09+00:00 ERROR catalog connection refused on node-01
+operator note: upstream restart for catalog on node-01
+2026-09-30T10:48:12+00:00 INFO catalog request recovered
+trace_id=trace-08117
+retry_budget=1
+2026-09-30T10:48:26+00:00 INFO search request started on node-02
+request_id=req-4218 route=/v1/search/items
+{"service":"search","request":"req-4218","host":"node-02"}
+2026-09-30T10:48:26+00:00 WARN search latency 1006ms exceeds 200ms
+METRIC search.latency_ms=1006
+2026-09-30T10:48:26+00:00 ERROR search database timeout on node-02
+operator note: database failover for search on node-02
+2026-09-30T10:48:29+00:00 INFO search request recovered
+trace_id=trace-08118
+retry_budget=2
+2026-09-30T10:48:43+00:00 INFO api request started on node-03
+request_id=req-4219 route=/v1/api/items
+{"service":"api","request":"req-4219","host":"node-03"}
+2026-09-30T10:48:43+00:00 WARN api latency 1043ms exceeds 200ms
+METRIC api.latency_ms=1043
+2026-09-30T10:48:43+00:00 ERROR api database timeout on node-03
+operator note: database failover for api on node-03
+2026-09-30T10:48:46+00:00 INFO api request recovered
+trace_id=trace-08119
+retry_budget=3

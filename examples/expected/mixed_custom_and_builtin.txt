@@ -1,0 +1,128 @@
+mixed-shop-incident.txt lines: 26 events: 26
+parsers: ['json', 'mixed-content', 'shop-metrics', 'sql-statements', 'timestamped-log']
+aggregates: 6
+ aggregate: log timestamped-log count: 7
+    INFO shop reconciliation started positions: [1] occurrences: 1
+    INFO shop database connection restored positions: [20] occurrences: 1
+    INFO shop reconciliation resumed positions: [25] occurrences: 1
+    WARN shop reconciliation lagging positions: [6] occurrences: 1
+    ERROR shop database timeout positions: [15, 16] occurrences: 2
+    ERROR shop database timeout positions: [24] occurrences: 1
+ aggregate: json_record json count: 4
+    None {'value': {'service': 'shop', 'batch': 'oct-01', 'state': 'running'}} positions: [2] occurrences: 1
+    None {'value': {'service': 'shop', 'batch': 'oct-01', 'state': 'processing'}} positions: [9] occurrences: 1
+    None {'value': {'service': 'shop', 'batch': 'oct-01', 'state': 'recovering'}} positions: [19] occurrences: 1
+    None {'value': {'service': 'shop', 'batch': 'oct-01', 'state': 'complete'}} positions: [26] occurrences: 1
+ aggregate: sql_statement sql-statements count: 8
+    None select shop.orders positions: [3, 4] occurrences: 2
+    None update shop.orders positions: [7, 8] occurrences: 2
+    None insert shop.audit_events positions: [10] occurrences: 1
+    None select shop.orders positions: [18] occurrences: 1
+    None select shop.orders positions: [21] occurrences: 1
+    None select positions: [13] occurrences: 1
+ aggregate: metric shop-metrics count: 3
+    None {'name': 'reconciliation_candidates', 'value': '24'} positions: [5] occurrences: 1
+    None {'name': 'retry_attempts', 'value': '1'} positions: [17] occurrences: 1
+    None {'name': 'reconciliation_candidates', 'value': '2'} positions: [22] occurrences: 1
+ aggregate: other mixed-content count: 2
+    None {'text': 'operator note: customer support notified'} positions: [11] occurrences: 1
+    None {'text': 'operator note: second pass found two delayed orders'} positions: [23] occurrences: 1
+ aggregate: fence mixed-content count: 2
+    None {'language': 'sql', 'text': '```sql'} positions: [12] occurrences: 1
+    None {'language': 'sql', 'text': '```'} positions: [14] occurrences: 1
+bytes: 1326 -> 3853
+lossless: True
+SQL event lines: [3, 4, 7, 8, 10, 13, 18, 21]
+first SQL: select ['shop.orders'] line: 3
+fenced SQL lines: [13]
+JSON values: [{'service': 'shop', 'batch': 'oct-01', 'state': 'running'}, {'service': 'shop', 'batch': 'oct-01', 'state': 'processing'}, {'service': 'shop', 'batch': 'oct-01', 'state': 'recovering'}, {'service': 'shop', 'batch': 'oct-01', 'state': 'complete'}]
+metric values: [{'name': 'reconciliation_candidates', 'value': '24'}, {'name': 'retry_attempts', 'value': '1'}, {'name': 'reconciliation_candidates', 'value': '2'}]
+custom SQL aggregator:
+ aggregate: sql_statement sql-statements count: 8
+    None select shop.orders positions: [3, 4] occurrences: 2
+    None update shop.orders positions: [7, 8] occurrences: 2
+    None insert shop.audit_events positions: [10] occurrences: 1
+    None select shop.orders positions: [18] occurrences: 1
+    None select shop.orders positions: [21] occurrences: 1
+    None select positions: [13] occurrences: 1
+
+mixed-audit-review.txt lines: 19 events: 20
+parsers: ['application-log', 'json', 'mixed-content', 'shop-metrics', 'sql-statements']
+aggregates: 9
+ aggregate: log mixed-content count: 2
+    INFO daily audit review opened positions: [1] occurrences: 1
+    INFO daily audit review closed positions: [18] occurrences: 1
+ aggregate: other mixed-content count: 1
+    None {'text': 'operator note: follow-up requested for order 4103'} positions: [9] occurrences: 1
+ aggregate: fence mixed-content count: 2
+    None {'language': 'sql', 'text': '```sql'} positions: [10] occurrences: 1
+    None {'language': 'sql', 'text': '```'} positions: [12] occurrences: 1
+ aggregate: json_record json count: 3
+    None {'value': {'review': 'oct-01', 'owner': 'audit', 'status': 'open'}} positions: [2] occurrences: 1
+    None {'value': {'review': 'oct-01', 'owner': 'audit', 'status': 'follow-up'}} positions: [13] occurrences: 1
+    None {'value': {'review': 'oct-01', 'owner': 'audit', 'status': 'closed'}} positions: [19] occurrences: 1
+ aggregate: sql_statement sql-statements count: 7
+    None select shop.audit_events positions: [3, 4] occurrences: 2
+    None update shop.audit_events positions: [7, 8] occurrences: 2
+    None insert shop.audit_events positions: [14] occurrences: 1
+    None select shop.audit_events positions: [17] occurrences: 1
+    None delete shop.audit_events positions: [11] occurrences: 1
+ aggregate: metric shop-metrics count: 2
+    None {'name': 'records_reviewed', 'value': '82'} positions: [5] occurrences: 1
+    None {'name': 'records_reviewed', 'value': '83'} positions: [15] occurrences: 1
+ aggregate: timeout application-log count: 1
+    ERROR ERROR database timeout positions: [6] occurrences: 1
+ aggregate: error application-log count: 1
+    ERROR database timeout positions: [6] occurrences: 1
+ aggregate: warning application-log count: 1
+    WARNING audit review delayed positions: [16] occurrences: 1
+bytes: 851 -> 4008
+lossless: True
+SQL event lines: [3, 4, 7, 8, 11, 14, 17]
+first SQL: select ['shop.audit_events'] line: 3
+fenced SQL lines: [11]
+JSON values: [{'review': 'oct-01', 'owner': 'audit', 'status': 'open'}, {'review': 'oct-01', 'owner': 'audit', 'status': 'follow-up'}, {'review': 'oct-01', 'owner': 'audit', 'status': 'closed'}]
+metric values: [{'name': 'records_reviewed', 'value': '82'}, {'name': 'records_reviewed', 'value': '83'}]
+custom SQL aggregator:
+ aggregate: sql_statement sql-statements count: 7
+    None select shop.audit_events positions: [3, 4] occurrences: 2
+    None update shop.audit_events positions: [7, 8] occurrences: 2
+    None insert shop.audit_events positions: [14] occurrences: 1
+    None select shop.audit_events positions: [17] occurrences: 1
+    None delete shop.audit_events positions: [11] occurrences: 1
+
+mixed-custom-clock.txt lines: 15 events: 15
+parsers: ['json', 'mixed-content', 'shop-metrics', 'sql-statements', 'timestamped-log']
+aggregates: 6
+ aggregate: log timestamped-log count: 5
+    INFO inventory scan started positions: [1] occurrences: 1
+    INFO backup reader restored positions: [14] occurrences: 1
+    ERROR inventory reader stalled positions: [6, 7] occurrences: 2
+    ERROR inventory reader stalled positions: [13] occurrences: 1
+ aggregate: json_record json count: 2
+    None {'value': {'service': 'inventory', 'scan': 'oct-01'}} positions: [2] occurrences: 1
+    None {'value': {'service': 'inventory', 'scan': 'complete'}} positions: [15] occurrences: 1
+ aggregate: sql_statement sql-statements count: 4
+    None select shop.inventory positions: [3, 4] occurrences: 2
+    None update shop.inventory positions: [9] occurrences: 1
+    None delete shop.inventory positions: [11] occurrences: 1
+ aggregate: metric shop-metrics count: 1
+    None {'name': 'low_stock_items', 'value': '8'} positions: [5] occurrences: 1
+ aggregate: other mixed-content count: 1
+    None {'text': 'operator note: trying the backup reader'} positions: [8] occurrences: 1
+ aggregate: fence mixed-content count: 2
+    None {'language': 'sql', 'text': '```sql'} positions: [10] occurrences: 1
+    None {'language': 'sql', 'text': '```'} positions: [12] occurrences: 1
+bytes: 679 -> 2892
+lossless: True
+SQL event lines: [3, 4, 9, 11]
+first SQL: select ['shop.inventory'] line: 3
+fenced SQL lines: [11]
+JSON values: [{'service': 'inventory', 'scan': 'oct-01'}, {'service': 'inventory', 'scan': 'complete'}]
+metric values: [{'name': 'low_stock_items', 'value': '8'}]
+custom SQL aggregator:
+ aggregate: sql_statement sql-statements count: 4
+    None select shop.inventory positions: [3, 4] occurrences: 2
+    None update shop.inventory positions: [9] occurrences: 1
+    None delete shop.inventory positions: [11] occurrences: 1
+

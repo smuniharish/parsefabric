@@ -1,0 +1,11 @@
+line  1: log                timestamped-log  shop database timeout
+line  2: json_record        json             {'service': 'shop', 'state': 'degraded'}
+line  4: other              mixed-content    operator note: failover requested
+line  5: fence              mixed-content    log
+line  6: connection_failure application-log  connection refused by replica-2
+line  7: fence              mixed-content    log
+line  8: code               mixed-content    python
+line  9: code               mixed-content    python
+line 10: log                timestamped-log  shop database connection restored
+aggregates: [('code', 'mixed-content'), ('connection_failure', 'application-log'), ('fence', 'mixed-content'), ('json_record', 'json'), ('log', 'timestamped-log'), ('other', 'mixed-content')]
+every event rebuilt: True

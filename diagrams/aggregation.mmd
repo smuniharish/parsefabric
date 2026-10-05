@@ -1,0 +1,11 @@
+flowchart TB
+    events["Events of one source, in source order"] --> byType["One EvidenceAggregate per event type and parser"]
+    byType --> groups["EvidenceGroup per pattern and severity"]
+    byType --> checksum["SHA-256 over every canonical event"]
+    groups --> entries["EvidenceEntry per run of identical adjacent events:<br/>message, occurrences, line positions"]
+    entries --> choice{"Parser deterministic<br/>and stateless?"}
+    choice -- yes --> positions["Store line positions only;<br/>materialize parses the source again"]
+    choice -- no --> retained["Store the events themselves;<br/>materialize needs no source"]
+    positions --> verify["materialize rebuilds the aggregates<br/>and compares them, checksums included"]
+    retained --> verify
+    checksum --> verify

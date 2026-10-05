@@ -1,0 +1,6 @@
+registered ticket-intent v2 (IntentParser), deterministic=False
+question  How do I reset my password?
+report    The invoice total is wrong.
+question  Can I change my delivery address?
+aggregate retains events: True
+materialized without the source: True

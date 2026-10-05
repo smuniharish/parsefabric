@@ -1,0 +1,192 @@
+[build-system]
+requires = ["hatchling>=1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "parsefabric"
+dynamic = ["version"]
+description = "Composable parsers that turn logs, JSON, command output and mixed text into structured events with traceable, losslessly aggregated evidence."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "S MUNI HARISH", email = "samamuniharish@gmail.com" }]
+keywords = [
+  "parsing",
+  "logs",
+  "provenance",
+  "evidence",
+  "streaming",
+  "mixed-content",
+  "observability",
+  "llm",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Logging",
+  "Topic :: Text Processing",
+  "Typing :: Typed",
+]
+dependencies = [
+  "jc>=1.26,<2",
+  "langchain-core>=1.6.6,<2",
+  "langgraph>=1.2.12,<2",
+  "msgspec>=0.22,<1",
+  "opentelemetry-api>=1.45,<2",
+  "pydantic>=2.13.5,<3",
+  "structlog>=26.1",
+  "tree-sitter>=0.26,<1",
+  "tree-sitter-language-pack>=1.20,<2",
+]
+
+[project.optional-dependencies]
+openai = ["langchain-openai>=1.6.7,<2"]
+
+[project.urls]
+Homepage = "https://github.com/smuniharish/parsefabric"
+Documentation = "https://parsefabric.readthedocs.io"
+Repository = "https://github.com/smuniharish/parsefabric"
+Issues = "https://github.com/smuniharish/parsefabric/issues"
+Changelog = "https://parsefabric.readthedocs.io/en/latest/changelog/"
+
+[dependency-groups]
+test = [
+  "coverage[toml]>=7.16.2",
+  "hypothesis>=6.168.3,<7",
+  "opentelemetry-sdk>=1.45,<2",
+  "pytest>=9.1.1",
+  "pytest-asyncio>=1.4",
+]
+lint = ["ruff>=0.16.10"]
+types = ["pyrefly>=1.3.2"]
+docs = [
+  "mkdocs>=1.6.1,<2",
+  "mkdocs-material>=9.7.7,<10",
+  "mkdocstrings>=1.0.6,<2",
+  "mkdocstrings-python>=2.0.9,<3",
+]
+celery = ["celery[redis]>=5.6.3,<6"]
+examples = [
+  { include-group = "celery" },
+  "langchain>=1.4.3,<2",
+  "langchain-openai>=1.6.7,<2",
+  "sqlglot>=30.21,<31",
+  "streamlit>=1.65,<2",
+]
+dev = [
+  { include-group = "test" },
+  { include-group = "lint" },
+  { include-group = "types" },
+  { include-group = "docs" },
+  { include-group = "examples" },
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.hatch.version]
+path = "src/parsefabric/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parsefabric"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/examples",
+  "/benchmarks",
+  "/docs",
+  "/diagrams",
+  "/scripts",
+  "/parsefabric-skills",
+  "/mkdocs.yml",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/CONTRIBUTING.md",
+  "/CODE_OF_CONDUCT.md",
+  "/SECURITY.md",
+  "/LICENSE",
+]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+testpaths = ["tests"]
+pythonpath = [".", "examples"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+  "live: calls a real OpenAI-compatible model; requires the PARSEFABRIC_LLM_* environment variables",
+  "slow: long-running soak, load or endurance checks",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["parsefabric"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests", "."]
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ASYNC",
+  "B",
+  "C4",
+  "D",
+  "DTZ",
+  "E",
+  "F",
+  "FURB",
+  "I",
+  "N",
+  "PERF",
+  "PIE",
+  "PT",
+  "PTH",
+  "RET",
+  "RUF",
+  "S",
+  "SIM",
+  "T20",
+  "UP",
+  "W",
+]
+ignore = ["D105", "D107"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "S101", "S108", "S301", "S603", "PT011"]
+"examples/**/*.py" = ["D", "T201", "S603"]
+"benchmarks/**/*.py" = ["D", "T201", "S603"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["parsefabric", "examples", "benchmarks", "tests"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pyrefly]
+project-includes = ["src", "tests", "examples", "benchmarks"]
+search-path = ["src", "examples", "."]

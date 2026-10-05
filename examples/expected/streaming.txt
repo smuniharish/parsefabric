@@ -1,0 +1,9 @@
+in order:
+  request 1 timed out
+  request 2 timed out
+  request 3 timed out
+  request 4 timed out
+  request 5 timed out
+  request 6 timed out
+  failed: UnicodeDecodeError
+concurrently: 6 events, 1 recorded failure

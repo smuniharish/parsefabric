@@ -1,0 +1,9 @@
+# Normalize line endings in the repository; check out text with native endings.
+* text=auto
+
+# Files used inside Linux containers keep LF endings on every platform.
+*.Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Binary assets.
+*.png binary

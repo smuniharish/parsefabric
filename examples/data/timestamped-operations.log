@@ -1,0 +1,11 @@
+2026-10-01T08:00:00+00:00 INFO reconciliation started for batch oct-01
+2026-10-01T08:00:01+00:00 DEBUG fetched 24 pending orders
+2026-10-01T08:00:02+00:00 WARN upstream inventory snapshot is two minutes old
+2026-10-01T08:00:03+00:00 ERROR shop database timeout
+2026-10-01T08:00:04+00:00 ERROR shop database timeout
+2026-10-01T08:00:05+00:00 INFO retry scheduled with a fresh connection
+2026-10-01T08:00:06+00:00 DEBUG retry found 22 pending orders
+2026-10-01T08:00:07+00:00 INFO 22 orders reconciled
+2026-10-01T08:00:08+00:00 ERROR shop database timeout
+2026-10-01T08:00:09+00:00 WARN two orders remain pending
+2026-10-01T08:00:10+00:00 INFO operator notified for manual review

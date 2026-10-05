@@ -1,0 +1,19 @@
+INFO daily audit review opened
+{"review":"oct-01","owner":"audit","status":"open"}
+SELECT id, action FROM shop.audit_events WHERE action = 'shipped';
+SELECT id, action FROM shop.audit_events WHERE action = 'shipped';
+METRIC records_reviewed: 82
+ERROR database timeout
+UPDATE shop.audit_events SET action = 'reviewed' WHERE id = 5101;
+UPDATE shop.audit_events SET action = 'reviewed' WHERE id = 5102;
+operator note: follow-up requested for order 4103
+```sql
+DELETE FROM shop.audit_events WHERE id = 5103;
+```
+{"review":"oct-01","owner":"audit","status":"follow-up"}
+INSERT INTO shop.audit_events (order_id, action) VALUES (4103, 'review; manual');
+METRIC records_reviewed: 83
+WARN: audit review delayed
+SELECT id, action FROM shop.audit_events WHERE order_id = 4103;
+INFO daily audit review closed
+{"review":"oct-01","owner":"audit","status":"closed"}

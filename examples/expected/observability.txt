@@ -1,0 +1,10 @@
+spans:
+  parsefabric.parse: ['ParserSelected', 'ParseStarted', 'PatternMatched', 'PatternMatched', 'PatternMatched', 'ParseCompleted']
+  parsefabric.aggregation: ['AggregationStarted', 'AggregationCompleted']
+structured log records:
+  ParserSelected
+  ParseStarted
+  PatternMatched         match_count=1 pattern_name=error
+  PatternMatched         match_count=1 pattern_name=timeout
+  PatternMatched         match_count=1 pattern_name=warning
+  ParseCompleted         event_count=3

@@ -1,0 +1,11 @@
+{
+  "service": "shop",
+  "batch": "oct-01",
+  "status": "degraded",
+  "pending_orders": 2,
+  "timeouts": [
+    {"at": "2026-10-01T08:00:03+00:00", "component": "orders-db"},
+    {"at": "2026-10-01T08:00:04+00:00", "component": "orders-db"}
+  ],
+  "operator_note": "Manual review requested for two pending orders."
+}

@@ -1,0 +1,10 @@
+patterns in evaluation order: ['slow', 'deploy', 'health', 'rollback']
+line 1: deployment   severity=None attributes={'service': 'web-7', 'state': 'started'}
+line 2: health_check severity=None attributes={'outcome': 'passed'}
+line 3: slow         severity=WARNING attributes={'latency_ms': 2400}
+line 3: health_check severity=None attributes={'outcome': 'failed'}
+line 4: rollback     severity=ERROR attributes={'action': 'rollback'}
+line 5: deployment   severity=None attributes={'service': 'web-7', 'state': 'finished'}
+matches: {'deploy': 2, 'health': 2, 'rollback': 1, 'slow': 1}
+events with first_match_only: 5
+events after register_pattern: 7

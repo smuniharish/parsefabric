@@ -1,0 +1,8 @@
+json: json_record {'order': 1042, 'status': 'paid', 'total': 99.5}
+invalid json: unparsed DecodeError
+traceback: TimeoutError - upstream request expired (2 frames)
+df: / 70% used
+df: /var/lib/data 96% used
+log line 1: 08:00:03 ERROR shop database timeout
+log line 2: 08:00:05 INFO retry scheduled with a fresh connection
+log line 3: 08:00:07 INFO 22 orders reconciled

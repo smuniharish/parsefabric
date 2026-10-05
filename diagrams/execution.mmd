@@ -1,0 +1,10 @@
+flowchart TB
+    stream["Inputs or a large document"] --> mode{"How to run?"}
+    mode -- "one by one" --> iter["ParseEngine.parse_iter<br/>results in input order"]
+    mode -- "concurrently" --> asyncIter["ParseEngine.parse_async_iter<br/>bounded, completion order"]
+    mode -- "split the document" --> partition["LinePartitioner<br/>line-framed parsers only"]
+    partition --> map["ExecutionBackend.map<br/>bounded in-flight work"]
+    map --> local["asyncio, threads<br/>or processes"]
+    map --> custom["Your own backend,<br/>for example Celery"]
+    local --> rebase["Re-base line numbers and aggregate"]
+    custom --> rebase

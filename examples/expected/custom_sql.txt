@@ -1,0 +1,43 @@
+input lines: 66 statements: 25
+aggregate: sql_statement count: 25
+  3 x [2, 7, 12] select shop.orders
+  2 x [17, 18] update shop.orders
+  2 x [20, 22] insert shop.audit_events
+  1 x [25] select shop.audit_events
+  1 x [31] insert shop.audit_events
+  1 x [34] select shop.customers,shop.orders
+  2 x [44, 45] select shop.orders
+  3 x [47, 48, 49] update shop.orders
+  2 x [51, 53] insert shop.audit_events
+  2 x [56, 57] select shop.audit_events
+  2 x [59, 60] delete shop.audit_events
+  2 x [62, 63] select shop.orders
+  1 x [65] update shop.customers
+  1 x [66] select shop.customers
+bytes: 2074 -> 1332 (35.8% smaller)
+materialized: 25 lossless: True
+ statement: 1 select ['shop.orders'] line: 2 sql: SELECT o.id, o.total_cents FROM shop.orders AS o WHERE o.status = 'pending' ORDER BY o.id
+ statement: 2 select ['shop.orders'] line: 7 sql: SELECT o.id, o.total_cents FROM shop.orders AS o WHERE o.status = 'pending' ORDER BY o.id
+ statement: 3 select ['shop.orders'] line: 12 sql: SELECT o.id, o.total_cents FROM shop.orders AS o WHERE o.status = 'pending' ORDER BY o.id
+ statement: 4 update ['shop.orders'] line: 17 sql: UPDATE shop.orders SET status = 'processing' WHERE id = 4101
+ statement: 5 update ['shop.orders'] line: 18 sql: UPDATE shop.orders SET status = 'processing' WHERE id = 4102
+ statement: 6 insert ['shop.audit_events'] line: 20 sql: INSERT INTO shop.audit_events (order_id, action) VALUES (4101, 'processing')
+ statement: 7 insert ['shop.audit_events'] line: 22 sql: INSERT INTO shop.audit_events (order_id, action) VALUES (4102, 'processing')
+ statement: 8 select ['shop.audit_events'] line: 25 sql: SELECT id, action FROM shop.audit_events WHERE order_id IN (4101, 4102) ORDER BY id
+ statement: 9 insert ['shop.audit_events'] line: 31 sql: INSERT INTO shop.audit_events (order_id, action) VALUES (4103, 'review; manual')
+ statement: 10 select ['shop.customers', 'shop.orders'] line: 34 sql: WITH recent_orders AS (SELECT id, customer_id, total_cents FROM shop.orders WHERE status = 'processing') SELECT r.id, c.name, r.total_cents FROM recent_orders AS r JOIN shop.customers AS c ON c.id = r.customer_id ORDER BY r.id
+ statement: 11 select ['shop.orders'] line: 44 sql: SELECT id, status FROM shop.orders WHERE id = 4101
+ statement: 12 select ['shop.orders'] line: 45 sql: SELECT id, status FROM shop.orders WHERE id = 4102
+ statement: 13 update ['shop.orders'] line: 47 sql: UPDATE shop.orders SET status = 'shipped' WHERE id = 4101
+ statement: 14 update ['shop.orders'] line: 48 sql: UPDATE shop.orders SET status = 'shipped' WHERE id = 4102
+ statement: 15 update ['shop.orders'] line: 49 sql: UPDATE shop.orders SET status = 'shipped' WHERE id = 4103
+ statement: 16 insert ['shop.audit_events'] line: 51 sql: INSERT INTO shop.audit_events (order_id, action) VALUES (4101, 'shipped')
+ statement: 17 insert ['shop.audit_events'] line: 53 sql: INSERT INTO shop.audit_events (order_id, action) VALUES (4102, 'shipped')
+ statement: 18 select ['shop.audit_events'] line: 56 sql: SELECT id, action FROM shop.audit_events WHERE action = 'shipped'
+ statement: 19 select ['shop.audit_events'] line: 57 sql: SELECT id, action FROM shop.audit_events WHERE action = 'shipped'
+ statement: 20 delete ['shop.audit_events'] line: 59 sql: DELETE FROM shop.audit_events WHERE order_id = 4099 AND action = 'duplicate'
+ statement: 21 delete ['shop.audit_events'] line: 60 sql: DELETE FROM shop.audit_events WHERE order_id = 4098 AND action = 'duplicate'
+ statement: 22 select ['shop.orders'] line: 62 sql: SELECT id, total_cents FROM shop.orders WHERE status = 'shipped'
+ statement: 23 select ['shop.orders'] line: 63 sql: SELECT id, total_cents FROM shop.orders WHERE status = 'shipped'
+ statement: 24 update ['shop.customers'] line: 65 sql: UPDATE shop.customers SET tier = 'gold' WHERE id = 201
+ statement: 25 select ['shop.customers'] line: 66 sql: SELECT id, name, tier FROM shop.customers WHERE id = 201

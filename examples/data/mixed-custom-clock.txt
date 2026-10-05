@@ -1,0 +1,15 @@
+[2026-10-01T09:00:00+00:00] [INFO] inventory scan started
+{"service":"inventory","scan":"oct-01"}
+SELECT id, quantity FROM shop.inventory WHERE quantity < 5;
+SELECT id, quantity FROM shop.inventory WHERE quantity < 5;
+METRIC low_stock_items: 8
+[2026-10-01T09:00:01+00:00] [ERROR] inventory reader stalled
+[2026-10-01T09:00:02+00:00] [ERROR] inventory reader stalled
+operator note: trying the backup reader
+UPDATE shop.inventory SET quantity = 12 WHERE id = 3001;
+```sql
+DELETE FROM shop.inventory WHERE id = 3001;
+```
+[2026-10-01T09:00:03+00:00] [ERROR] inventory reader stalled
+[2026-10-01T09:00:04+00:00] [INFO] backup reader restored
+{"service":"inventory","scan":"complete"}

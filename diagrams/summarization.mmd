@@ -1,0 +1,11 @@
+flowchart TB
+    aggregates["Aggregates, never the raw input"] --> facts["Facts with IDs, counts and lines,<br/>reviewed in parallel batches"]
+    facts --> draft["Model drafts structured claims"]
+    draft --> check{"IDs, totals<br/>and numbers<br/>valid?"}
+    check -- yes --> critic["Model critiques the rendered report"]
+    critic --> issues{"Issues?"}
+    issues -- none --> render["Report with exact counts and lines"]
+    check -- no --> budget{"Revisions<br/>left?"}
+    issues -- some --> budget
+    budget -- yes --> draft
+    budget -- no --> error["SummaryValidationError"]

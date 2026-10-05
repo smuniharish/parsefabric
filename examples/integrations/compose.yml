@@ -1,0 +1,92 @@
+# Run the distributed-runtime examples against real services.
+#
+#   docker compose --profile celery up --build --abort-on-container-exit --exit-code-from celery-example
+#   docker compose --profile spark run --rm --build spark-example
+#   docker compose --profile flink up -d --build    (then see README.md)
+#
+# Every service mounts the repository read-only; nothing is written back.
+name: parsefabric-examples
+
+x-celery: &celery
+  image: python:3.12-slim
+  working_dir: /workspace
+  volumes:
+    - ../..:/workspace:ro
+  environment:
+    PARSEFABRIC_CELERY_BROKER_URL: redis://redis:6379/0
+    PARSEFABRIC_CELERY_RESULT_URL: redis://redis:6379/1
+    PARSEFABRIC_CELERY_RECORDS: ${PARSEFABRIC_CELERY_RECORDS:-100}
+    PARSEFABRIC_CELERY_SAMPLES: ${PARSEFABRIC_CELERY_SAMPLES:-3}
+    UV_PROJECT_ENVIRONMENT: /tmp/parsefabric-venv
+    UV_LINK_MODE: copy
+
+services:
+  redis:
+    image: redis:8-alpine
+    profiles: [celery]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  celery-worker:
+    <<: *celery
+    profiles: [celery]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: >-
+      sh -c "pip install --quiet --disable-pip-version-check --root-user-action=ignore uv &&
+      uv sync --frozen --no-dev --group celery &&
+      uv run --no-sync celery -A examples.integrations.celery_backend:celery_app
+      worker --loglevel=warning --concurrency=2"
+
+  celery-example:
+    <<: *celery
+    profiles: [celery]
+    depends_on:
+      - celery-worker
+    command: >-
+      sh -c "pip install --quiet --disable-pip-version-check --root-user-action=ignore uv &&
+      uv sync --frozen --no-dev --group celery &&
+      uv run --no-sync python -m examples.integrations.celery_example"
+
+  spark-example:
+    profiles: [spark]
+    build:
+      context: ../..
+      dockerfile: examples/integrations/spark.Dockerfile
+    environment:
+      PARSEFABRIC_SPARK_MIN_RECORDS_PER_SECOND: ${PARSEFABRIC_SPARK_MIN_RECORDS_PER_SECOND:-}
+
+  flink-jobmanager:
+    profiles: [flink]
+    build:
+      context: ../..
+      dockerfile: examples/integrations/flink.Dockerfile
+    image: parsefabric-flink-example
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager"
+    volumes:
+      - ../..:/workspace:ro
+      - flink-results:/results
+
+  flink-taskmanager:
+    profiles: [flink]
+    image: parsefabric-flink-example
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    volumes:
+      - ../..:/workspace:ro
+      - flink-results:/results
+
+volumes:
+  flink-results:

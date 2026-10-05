@@ -1,0 +1,3 @@
+3000 lines in 6 partitions -> 3000 events
+identical to parsing the whole document: True
+aggregates rebuild every event: True

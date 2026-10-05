@@ -1,0 +1,146 @@
+site_name: ParseFabric
+site_description: >-
+  Composable parsers that turn logs, JSON, command output and mixed text into
+  structured events with traceable, losslessly aggregated evidence.
+site_url: https://parsefabric.readthedocs.io/en/latest/
+site_author: S MUNI HARISH
+repo_name: smuniharish/parsefabric
+repo_url: https://github.com/smuniharish/parsefabric
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 S MUNI HARISH &middot; Apache License 2.0
+
+watch:
+  - src
+  - examples
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: false
+            show_root_toc_entry: false
+            show_root_full_path: false
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            members_order: source
+            heading_level: 2
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+      - Agent Skills: agent-skills.md
+  - User guide:
+      - Parsing and evidence: guide/parsing.md
+      - Built-in parsers: guide/builtin-parsers.md
+      - Patterns and custom parsers: guide/custom-parsers.md
+      - Mixed content: guide/mixed-content.md
+      - Aggregation and storage: guide/aggregation.md
+      - Streaming and execution: guide/execution.md
+      - Observability: guide/observability.md
+      - Evidence summaries: guide/summaries.md
+      - Distributed runtimes: guide/distributed-runtimes.md
+  - Architecture: architecture.md
+  - Examples: examples.md
+  - API reference:
+      - reference/index.md
+      - Engine: reference/engine.md
+      - Models: reference/models.md
+      - Parsers: reference/parser.md
+      - Capabilities: reference/capabilities.md
+      - Patterns: reference/patterns.md
+      - Built-in parsers: reference/builtins.md
+      - Aggregation: reference/aggregation.md
+      - Execution: reference/execution.md
+      - Partitioning: reference/partitioning.md
+      - Observability: reference/observability.md
+      - Serialization: reference/serialization.md
+      - Compression: reference/compression.md
+      - Registry: reference/registry.md
+      - Summarization: reference/summarization.md
+      - Errors: reference/errors.md
+  - Operations:
+      - Security: operations/security.md
+      - Failure handling: operations/failure-handling.md
+      - Performance: operations/performance.md
+  - Development:
+      - Contributing: development/contributing.md
+      - Testing: development/testing.md
+  - Changelog: changelog.md

@@ -1,0 +1,3 @@
+# Observability
+
+::: parsefabric.observability

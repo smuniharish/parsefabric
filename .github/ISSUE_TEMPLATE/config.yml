@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://parsefabric.readthedocs.io/en/latest/
+    about: Guides, examples and the API reference.
+  - name: Report a security vulnerability
+    url: https://github.com/smuniharish/parsefabric/security/advisories/new
+    about: Report vulnerabilities privately, not in public issues.

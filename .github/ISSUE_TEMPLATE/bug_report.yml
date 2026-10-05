@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a problem with ParseFabric.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting a problem. Please report security vulnerabilities
+        privately as described in the security policy, not here.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: A short script and input that reproduce the problem.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Actual output or traceback
+      render: text
+  - type: input
+    id: parsefabric-version
+    attributes:
+      label: ParseFabric version
+      placeholder: python -c "import parsefabric; print(parsefabric.__version__)"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version and operating system
+      placeholder: Python 3.13 on Ubuntu 24.04
+    validations:
+      required: true

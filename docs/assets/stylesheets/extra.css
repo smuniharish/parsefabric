@@ -1,0 +1,12 @@
+/* Rendered diagrams have a white background; frame them so they read well in
+   both the light and the dark color scheme. */
+.md-typeset figure.diagram img {
+  background: #ffffff;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.4rem;
+  padding: 0.6rem;
+}
+
+.md-typeset figure.diagram figcaption {
+  max-width: 36rem;
+}

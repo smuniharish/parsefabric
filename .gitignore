@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Example inputs are part of the repository, even though logs are ignored above.
+!examples/data/*.log

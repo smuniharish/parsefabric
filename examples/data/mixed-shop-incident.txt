@@ -1,0 +1,26 @@
+2026-10-01T08:00:00+00:00 INFO shop reconciliation started
+{"service":"shop","batch":"oct-01","state":"running"}
+SELECT id, total_cents FROM shop.orders WHERE status = 'pending';
+SELECT id, total_cents FROM shop.orders WHERE status = 'pending';
+METRIC reconciliation_candidates: 24
+2026-10-01T08:00:01+00:00 WARN shop reconciliation lagging
+UPDATE shop.orders SET status = 'processing' WHERE id = 4101;
+UPDATE shop.orders SET status = 'processing' WHERE id = 4102;
+{"service":"shop","batch":"oct-01","state":"processing"}
+INSERT INTO shop.audit_events (order_id, action) VALUES (4101, 'processing; queued');
+operator note: customer support notified
+```sql
+SELECT 'fenced example; parsed as SQL' AS example;
+```
+2026-10-01T08:00:02+00:00 ERROR shop database timeout
+2026-10-01T08:00:03+00:00 ERROR shop database timeout
+METRIC retry_attempts: 1
+SELECT id, status FROM shop.orders WHERE id = 4101;
+{"service":"shop","batch":"oct-01","state":"recovering"}
+2026-10-01T08:00:04+00:00 INFO shop database connection restored
+SELECT id, status FROM shop.orders WHERE id = 4102;
+METRIC reconciliation_candidates: 2
+operator note: second pass found two delayed orders
+2026-10-01T08:00:05+00:00 ERROR shop database timeout
+2026-10-01T08:00:06+00:00 INFO shop reconciliation resumed
+{"service":"shop","batch":"oct-01","state":"complete"}
