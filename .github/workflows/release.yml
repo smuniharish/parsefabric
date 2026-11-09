@@ -22,7 +22,7 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="$(uv version --short)"
+          version="$(uv version --short --color never)"
           if [ "$TAG" != "v$version" ]; then
             echo "Release tag $TAG does not match the package version v$version." >&2
             exit 1

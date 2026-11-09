@@ -138,7 +138,7 @@ jobs:
           "$RUNNER_TEMP/wheel/bin/python" parsefabric-skills/skills/parsefabric-extend/scripts/check_extension.py sink_template:BatchingSink --path parsefabric-skills/skills/parsefabric-extend/assets
       - name: Install the LangChain extra and run the setup check
         run: |
-          uv pip install --python "$RUNNER_TEMP/wheel" "dist/parsefabric-$(uv version --short)-py3-none-any.whl[langchain]"
+          uv pip install --python "$RUNNER_TEMP/wheel" "dist/parsefabric-$(uv version --short --color never)-py3-none-any.whl[langchain]"
           "$RUNNER_TEMP/wheel/bin/python" parsefabric-skills/skills/parsefabric/scripts/verify_setup.py --langchain
       - name: Install the source distribution
         run: |
