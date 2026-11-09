@@ -14,7 +14,7 @@ backend and the machine, so measure the workload you care about.
 | I/O-bound parsers, such as `AsyncParser` subclasses | The event loop: `parse_async_iter` or `AsyncExecutionBackend` |
 | Blocking libraries that release the GIL | `ThreadExecutionBackend` |
 | Large documents and CPU-heavy parsing | `LinePartitioner` with `ProcessExecutionBackend` |
-| Very large or continuous volumes | Your own backend on a cluster; see [Distributed runtimes](../guide/distributed-runtimes.md) |
+| Very large or continuous volumes | Your own backend on a cluster; see [Distributed runtimes](../integrations/distributed-runtimes.md) |
 
 ## Tune
 
@@ -28,14 +28,31 @@ backend and the machine, so measure the workload you care about.
 - **Emit fewer events.** `first_match_only=True` stops at the first matching
   pattern on each line. Give frequent patterns higher priority.
 - **Limit code detection.** In `MixedContentParser`, code detection is the
-  most expensive step for unclaimed lines. Pass only the `code_languages` you
-  expect, or `()` to turn detection off. Detection results for short texts are
-  cached.
+  most expensive step for unclaimed lines. Pass a
+  `TreeSitterCodeDetector` with only the languages you expect, or
+  `code_detector=None` to turn detection off. Detection results for short
+  texts are cached, so share one detector between parsers.
 - **Store aggregates, not events.** Aggregates of deterministic parsers store
   line positions instead of events, so repetitive logs shrink substantially:
   the bursty incident log in the [aggregation example](../examples.md#aggregation)
-  is stored in 82% fewer bytes. `measure_compression` reports the savings for
+  is stored in 91% fewer bytes. `measure_compression` reports the savings for
   your data.
+
+## Memory
+
+| Operation | Holds in memory |
+| --- | --- |
+| `parse` | One input and its result |
+| `parse_many` | Every input's result, returned together |
+| `parse_async_iter` | At most `max_concurrency` inputs and their results; results are yielded as they finish |
+| `ExecutionBackend.map` | At most `max_in_flight` calls |
+| `aggregate` with `EvidenceAggregator` | One entry per distinct message and its positions; retained events only for parsers that cannot be re-parsed |
+| `aggregate` with `RoutingAggregator` | The events of one document, grouped by route, until each route's aggregator runs |
+| `EventAccumulator` | One count and time range per group |
+| `materialize` | The re-parsed events of one document |
+
+Use `parse_async_iter` instead of `parse_many` for unbounded streams, and
+`EventAccumulator` when you only need counts across many documents.
 
 ## Measure
 

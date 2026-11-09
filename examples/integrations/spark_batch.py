@@ -9,25 +9,21 @@ caller-defined parser configuration cross the job boundary.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Iterator
 from dataclasses import asdict
 from importlib import import_module
-from typing import Any, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from examples.integrations.json_contract import decode_json
 from examples.integrations.mixed_job import mixed_parser
 from examples.integrations.sync_bridge import run_sync
 from parsefabric.builtins import ApplicationLogParser
 from parsefabric.models import ParseContext, ParseResult
-from parsefabric.parser import Parser
 from parsefabric.serialization import dumps_result, loads_result
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
-class SparkSessionLike(Protocol):
-    """Only the Spark session attributes required by this bounded adapter."""
-
-    version: str
-    sparkContext: Any  # noqa: N815 - PySpark attribute name
+    from parsefabric.parser import Parser
 
 
 def load_spark_session() -> Any:
@@ -46,12 +42,8 @@ def load_spark_session() -> Any:
 MAX_RECORDS = 32
 MAX_SOURCE_BYTES = 1_048_576
 MAX_TOTAL_BYTES = 8_388_608
-_CONTEXT_KEYS = frozenset(
-    ("source_id", "correlation_id", "partition_id", "source_offset")
-)
-_JOB_KEYS = frozenset(
-    ("schema_version", "parser_name", "parser_version", "source", "context")
-)
+_CONTEXT_KEYS = frozenset(("source_id", "correlation_id", "partition_id", "source_offset"))
+_JOB_KEYS = frozenset(("schema_version", "parser_name", "parser_version", "source", "context"))
 
 # Fixed allowlist of (parser_name, parser_version) -> zero-argument factory.
 # Every factory returns the same deterministic parser configuration on the
@@ -71,9 +63,7 @@ def make_job(
 ) -> dict[str, object]:
     """Construct a version-1 parsing job for one allowlisted parser."""
     if (parser_name, parser_version) not in _PARSER_ALLOWLIST:
-        raise ValueError(
-            f"unknown allowlisted parser: {parser_name} version {parser_version}"
-        )
+        raise ValueError(f"unknown allowlisted parser: {parser_name} version {parser_version}")
     return {
         "schema_version": "1",
         "parser_name": parser_name,
@@ -83,9 +73,7 @@ def make_job(
     }
 
 
-def make_mixed_content_job(
-    source: str, context: ParseContext | None = None
-) -> dict[str, object]:
+def make_mixed_content_job(source: str, context: ParseContext | None = None) -> dict[str, object]:
     """Construct a version-1 job for the fixed, allowlisted mixed-content parser."""
     return make_job(source, context, parser_name="mixed-content", parser_version="1")
 
@@ -95,9 +83,7 @@ def _validated_job(job: object) -> tuple[str, ParseContext, Parser]:
         raise ValueError("job must contain exactly the version-1 job fields")
     if job["schema_version"] != "1":
         raise ValueError("unsupported job schema version")
-    if not isinstance(job["parser_name"], str) or not isinstance(
-        job["parser_version"], str
-    ):
+    if not isinstance(job["parser_name"], str) or not isinstance(job["parser_version"], str):
         raise ValueError("worker does not have the requested parser version")
     factory = _PARSER_ALLOWLIST.get((job["parser_name"], job["parser_version"]))
     if factory is None:
@@ -134,16 +120,18 @@ class SparkBatchParser:
     The driver validates all inputs before submission, caps records and total
     payload, then collects at most MAX_RECORDS results in original order.
     Caller owns the SparkSession lifecycle and cluster configuration.
+
+    Args:
+        spark: A PySpark 4 ``SparkSession``; only its ``version`` and
+            ``sparkContext`` are used.
     """
 
-    def __init__(self, spark: SparkSessionLike) -> None:
+    def __init__(self, spark: Any) -> None:
         if not spark.version.startswith("4."):
             raise ValueError("Spark 4 is required")
         self._spark = spark
 
-    def parse(
-        self, jobs: Iterable[dict[str, object]], *, partitions: int = 2
-    ) -> list[ParseResult]:
+    def parse(self, jobs: Iterable[dict[str, object]], *, partitions: int = 2) -> list[ParseResult]:
         if (
             not isinstance(partitions, int)
             or isinstance(partitions, bool)
@@ -177,9 +165,7 @@ class SparkBatchParser:
             for row in rows
         ):
             raise ValueError("Spark returned invalid result rows")
-        if len(rows) != len(batch) or sorted(index for index, _ in rows) != list(
-            range(len(batch))
-        ):
+        if len(rows) != len(batch) or sorted(index for index, _ in rows) != list(range(len(batch))):
             raise ValueError("Spark returned missing or duplicate results")
         return [loads_result(payload) for _, payload in sorted(rows)]
 

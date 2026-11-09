@@ -8,6 +8,7 @@ from parsefabric.engine import ParseEngine
 from parsefabric.errors import CapabilityError
 from parsefabric.models import ParseContext
 from parsefabric.partitioning import LinePartitioner
+from tests.support.aio import collect
 from tests.support.parsers import StatefulSequenceParser
 
 
@@ -40,9 +41,7 @@ async def test_async_stream_respects_bounded_concurrency() -> None:
 
 @pytest.mark.asyncio
 async def test_async_stream_cancellation_propagates() -> None:
-    task = asyncio.create_task(
-        _consume_slow_stream(ParseEngine(), ApplicationLogParser())
-    )
+    task = asyncio.create_task(_consume_slow_stream(ParseEngine(), ApplicationLogParser()))
     await asyncio.sleep(0.01)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -54,9 +53,9 @@ async def _consume_slow_stream(engine, parser) -> None:
         await asyncio.sleep(1)
 
 
-def test_line_partitioner_preserves_order_offsets_and_bounds() -> None:
+async def test_line_partitioner_preserves_order_offsets_and_bounds() -> None:
     parser = ApplicationLogParser()
-    partitions = tuple(
+    partitions = await collect(
         LinePartitioner(max_lines=2).partition(
             ["one", "two", "three"], source_id="logs", capabilities=parser.capabilities
         )
@@ -87,7 +86,7 @@ async def test_partitioned_parse_and_merge_matches_whole_input() -> None:
         source_id="logs",
         capabilities=parser.capabilities,
     )
-    for partition in partitions:
+    async for partition in partitions:
         result = await parser.parse(
             partition.content,
             ParseContext(
@@ -101,8 +100,8 @@ async def test_partitioned_parse_and_merge_matches_whole_input() -> None:
     assert await aggregator.merge(partial_summaries) == whole_summary
 
 
-def test_byte_bounded_partitions_receive_unique_ids() -> None:
-    partitions = tuple(
+async def test_byte_bounded_partitions_receive_unique_ids() -> None:
+    partitions = await collect(
         LinePartitioner(max_lines=100, max_bytes=4).partition(
             ["a", "b", "c"],
             capabilities=ApplicationLogParser().capabilities,
@@ -112,15 +111,13 @@ def test_byte_bounded_partitions_receive_unique_ids() -> None:
     assert [part.start_offset for part in partitions] == [0, 4]
 
 
-def test_line_partitioner_rejects_stateful_and_oversize_input() -> None:
+async def test_line_partitioner_rejects_stateful_and_oversize_input() -> None:
     with pytest.raises(CapabilityError):
-        tuple(
-            LinePartitioner().partition(
-                ["one"], capabilities=StatefulSequenceParser().capabilities
-            )
+        await collect(
+            LinePartitioner().partition(["one"], capabilities=StatefulSequenceParser().capabilities)
         )
     with pytest.raises(ValueError, match="byte limit"):
-        tuple(
+        await collect(
             LinePartitioner(max_bytes=3).partition(
                 ["large"], capabilities=ApplicationLogParser().capabilities
             )

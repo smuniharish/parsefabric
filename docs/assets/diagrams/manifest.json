@@ -2,7 +2,7 @@
   "renderer": "@mermaid-js/mermaid-cli@12.0.0",
   "config": "dbf6439b1204a35822833cdc52b41b217bd9ca41f2b8513898a9d2d13bd50fec",
   "sources": {
-    "aggregation.mmd": "914bba3c210457f76188d6916a581997f2f43e8627feb884a24ec0a1c60ebfcd",
+    "aggregation.mmd": "69ebdfc245d01a72121f4e1cc382f5bc143303e42b96a44d26976586635ffedb",
     "architecture.mmd": "9a24ef0b5a84c510c135687af44badc4ff1e59ab975b0377c45b7393894569eb",
     "execution.mmd": "60dc5f1668c73485023ad6032415c474ab01ee6f0e137e32e53f202c647e1f3f",
     "mixed-content.mmd": "cd0664e32253eef2ba3443e79b40e4ca17af4c82d23adf29f5a7fe9f42b86876",

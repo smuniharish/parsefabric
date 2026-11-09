@@ -2,19 +2,17 @@
 
 import json
 import sys
+from contextlib import nullcontext
 from typing import Any
 
 import pytest
 import semantic_llm
-from langchain_core.callbacks import AsyncCallbackHandler
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from langchain_core.messages import BaseMessage
 
 from parsefabric import ParseContext
 from parsefabric.engine import ParseEngine
 from parsefabric.errors import ParseError, SummaryValidationError
 from parsefabric.serialization import dumps_result, loads_result
-from tests.support.summary_model import SummaryModel
+from tests.support.summary_model import PromptLog, ScriptedModel, SummaryModel
 
 
 def test_semantic_example_without_credentials_exits_cleanly(
@@ -28,29 +26,16 @@ def test_semantic_example_without_credentials_exits_cleanly(
     assert "Set PARSEFABRIC_LLM_API_KEY to run this example." in capsys.readouterr().out
 
 
-class _CapturePrompts(AsyncCallbackHandler):
-    def __init__(self) -> None:
-        self.prompts: list[list[BaseMessage]] = []
-
-    async def on_chat_model_start(
-        self,
-        serialized: dict[str, Any],
-        messages: list[list[BaseMessage]],
-        **kwargs: Any,
-    ) -> None:
-        self.prompts.extend(messages)
-
-
 async def test_final_summary_uses_source_facts_not_semantic_claims() -> None:
-    capture = _CapturePrompts()
+    capture = PromptLog()
     invented = "All orders updated successfully; zero timeouts; root cause confirmed."
-    model = SummaryModel(initial=invented, callbacks=[capture])
+    model = SummaryModel(initial=invented, log=capture)
     result, semantic_aggregates = await semantic_llm.run(model, summarize=True)
     assert invented not in str(result.events[0].attributes["message"])
     assert result.llm_result
     assert invented not in result.llm_result
-    assert len(capture.prompts) == 5
-    system = str(capture.prompts[0][0].content)
+    assert len(capture.messages) == 5
+    system = capture.messages[0][0].content
     assert "not proof of execution" in system
     assert "specific lines that directly support" in system
     assert "Attribute operator notes as reports" in system
@@ -60,12 +45,12 @@ async def test_final_summary_uses_source_facts_not_semantic_claims() -> None:
     assert "do not leave the total implicit" in system
     assert "never borrow timestamps from neighboring records" in system
     assert "never widen a range over unrelated lines" in system
-    source_prompt = str(capture.prompts[0][1].content)
+    source_prompt = capture.messages[0][1].content
     assert (
         '19: {"service":"shop","batch":"oct-01","state":"recovering"}\n'
         "20: 2026-10-01T08:00:04+00:00 INFO"
     ) in source_prompt
-    summary_system = str(capture.prompts[3][0].content)
+    summary_system = capture.messages[3][0].content
     assert "SQL statements do not prove execution" in summary_system
     assert "not independently verified source facts" in summary_system
     assert "statement event's own positions" in summary_system
@@ -76,15 +61,13 @@ async def test_final_summary_uses_source_facts_not_semantic_claims() -> None:
     assert "without discussing fence delimiters" in summary_system
     assert "never borrow timestamps from neighboring records" in summary_system
     assert "never widen a range over unrelated lines" in summary_system
-    prompt = str(capture.prompts[3][1].content)
+    prompt = capture.messages[3][1].content
     assert invented not in prompt
     document = json.loads(prompt.split("<evidence>\n")[1].split("\n</evidence>")[0])
     facts = document["facts"]
     assert not any(item["event_type"] == "semantic_interpretation" for item in facts)
     entries = facts
-    timeouts = [
-        entry for entry in entries if entry["message"] == "shop database timeout"
-    ]
+    timeouts = [entry for entry in entries if entry["message"] == "shop database timeout"]
     assert sum(entry["occurrences"] for entry in timeouts) == 3
     assert [position for entry in timeouts for position in entry["positions"]] == [
         15,
@@ -103,14 +86,11 @@ async def test_final_summary_uses_source_facts_not_semantic_claims() -> None:
     note = next(
         entry
         for entry in entries
-        if entry["message"]
-        == {"text": "operator note: second pass found two delayed orders"}
+        if entry["message"] == {"text": "operator note: second pass found two delayed orders"}
     )
     assert note["positions"] == [23]
     sql_entries = [entry for entry in facts if entry["event_type"] == "sql_statement"]
-    assert next(entry for entry in sql_entries if entry["message"] == "select")[
-        "positions"
-    ] == [13]
+    assert next(entry for entry in sql_entries if entry["message"] == "select")["positions"] == [13]
     fence_positions = [
         position
         for entry in facts
@@ -125,19 +105,13 @@ async def test_final_summary_uses_source_facts_not_semantic_claims() -> None:
         ParseContext(source_id=semantic_llm.SOURCE.name),
     )
     assert restored == result.events
-    assert len(capture.prompts) == 5
+    assert len(capture.messages) == 5
     semantic_input = json.loads(
-        str(capture.prompts[1][1].content)
-        .split("<evidence>\n")[1]
-        .split("\n</evidence>")[0]
+        (capture.messages[1][1].content).split("<evidence>\n")[1].split("\n</evidence>")[0]
     )
     assert semantic_input["draft"] == invented
-    recovering = next(
-        fact for fact in semantic_input["facts"] if fact["positions"] == [19]
-    )
-    resumed = next(
-        fact for fact in semantic_input["facts"] if fact["positions"] == [25]
-    )
+    recovering = next(fact for fact in semantic_input["facts"] if fact["positions"] == [19])
+    resumed = next(fact for fact in semantic_input["facts"] if fact["positions"] == [25])
     assert recovering["timestamps"] == []
     assert resumed["timestamps"] == [[25, "2026-10-01T08:00:06+00:00"]]
 
@@ -162,10 +136,7 @@ async def test_semantic_events_are_retained_without_reinvoking_the_model() -> No
     assert event.evidence.parser_name == "semantic-incident"
     aggregates = await parser.aggregate(result.events)
     assert aggregates[0].retains_events
-    assert (
-        await ParseEngine().materialize(parser, source, aggregates, context)
-        == result.events
-    )
+    assert await ParseEngine().materialize(parser, source, aggregates, context) == result.events
     assert model.i == 3
     assert loads_result(dumps_result(result)) == result
 
@@ -187,7 +158,7 @@ async def test_semantic_example_final_result(summarize: bool) -> None:
 
 
 async def test_semantic_example_rejects_invalid_input_and_empty_output() -> None:
-    parser = semantic_llm.IncidentSemanticParser(FakeListChatModel(responses=[" "]))
+    parser = semantic_llm.IncidentSemanticParser(ScriptedModel([" "]))
     with pytest.raises(TypeError, match="text"):
         await parser.parse(1)
     with pytest.raises(ParseError, match="must not be empty"):
@@ -202,11 +173,7 @@ def test_semantic_cli_reports_review_failure_without_success_json(
     async def fail(*args: Any, **kwargs: Any) -> None:
         raise SummaryValidationError("Unsupported recovery claim")
 
-    import llm_summary_openai_compatible
-
-    monkeypatch.setattr(
-        llm_summary_openai_compatible, "build_model", lambda: SummaryModel()
-    )
+    monkeypatch.setattr(semantic_llm, "open_model", lambda: nullcontext(SummaryModel()))
     monkeypatch.setattr(semantic_llm, "run", fail)
     monkeypatch.setattr(sys, "argv", ["semantic_llm.py", "--summarize"])
     with pytest.raises(SystemExit, match="Semantic review failed"):

@@ -2,25 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from threading import RLock
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from parsefabric.capabilities import ParserCapabilities
 from parsefabric.errors import ConfigurationError
 from parsefabric.models import ParseContext, ParsedEvent, ParseResult, PatternStatistic
-from parsefabric.parser._text import iter_text_lines
-from parsefabric.parser.base import Parser, validated_identity
+from parsefabric.parser._text import iter_text_lines, source_text
+from parsefabric.parser.base import AggregateT_co, Parser, validated_identity
 from parsefabric.patterns import Pattern
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def _ordered(patterns: Iterable[Pattern]) -> tuple[Pattern, ...]:
-    return tuple(
-        sorted(patterns, key=lambda pattern: (-pattern.priority, pattern.name))
-    )
+    return tuple(sorted(patterns, key=lambda pattern: (-pattern.priority, pattern.name)))
 
 
-class DeterministicParser(Parser):
+class DeterministicParser(Parser[AggregateT_co]):
     """Apply an ordered set of patterns to every line of a text document.
 
     Each line is matched against every pattern in descending priority order
@@ -35,7 +35,7 @@ class DeterministicParser(Parser):
         version: Non-empty parser version.
         first_match_only: Stop at the first matching pattern on each line.
         capabilities: Explicit capabilities. Defaults to deterministic,
-            incremental, parallel-safe, line-partitionable and aggregatable.
+            parallel-safe, line-partitionable and aggregatable.
 
     Raises:
         ValueError: If the name or version is empty, pattern names repeat, or
@@ -61,16 +61,13 @@ class DeterministicParser(Parser):
             raise ValueError("pattern names must be unique within a parser")
         if not isinstance(first_match_only, bool):
             raise TypeError("first_match_only must be a bool")
-        if capabilities is not None and not isinstance(
-            capabilities, ParserCapabilities
-        ):
+        if capabilities is not None and not isinstance(capabilities, ParserCapabilities):
             raise TypeError("capabilities must be ParserCapabilities")
         self._patterns = _ordered(selected)
         self._first_match_only = first_match_only
         self._pattern_lock = RLock()
         self._capabilities = capabilities or ParserCapabilities(
             deterministic=True,
-            incremental=True,
             parallel_safe=True,
             partitionable=True,
             partition_framing="line",
@@ -116,9 +113,7 @@ class DeterministicParser(Parser):
         with self._pattern_lock:
             current = {item.name: item for item in self._patterns}
             if pattern.name in current and not replace:
-                raise ConfigurationError(
-                    f"pattern {pattern.name!r} is already registered"
-                )
+                raise ConfigurationError(f"pattern {pattern.name!r} is already registered")
             current[pattern.name] = pattern
             self._patterns = _ordered(current.values())
 
@@ -139,9 +134,7 @@ class DeterministicParser(Parser):
             try:
                 removed = current.pop(name)
             except KeyError as error:
-                raise ConfigurationError(
-                    f"pattern {name!r} is not registered"
-                ) from error
+                raise ConfigurationError(f"pattern {name!r} is not registered") from error
             self._patterns = _ordered(current.values())
             return removed
 
@@ -174,12 +167,7 @@ class DeterministicParser(Parser):
             TypeError: If ``source`` is not text or bytes.
             UnicodeError: If bytes are not UTF-8 or text is not valid Unicode.
         """
-        if isinstance(source, bytes):
-            text = source.decode("utf-8", errors="strict")
-        elif isinstance(source, str):
-            text = source
-        else:
-            raise TypeError("deterministic text parsers accept only str or bytes")
+        text = source_text(source, "deterministic text parser")
 
         events: list[ParsedEvent] = []
         patterns = self.patterns

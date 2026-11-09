@@ -195,16 +195,14 @@ async def main() -> None:
     result = await engine.parse(parser, LOG, context)
 
     aggregates = await engine.aggregate(parser, result.events)
-    stored = parser.serialize(aggregates)
+    stored = await engine.serialize(aggregates)
     print(f"{len(result.events)} events in {len(aggregates)} aggregates")
     for aggregate in aggregates:
         for group in aggregate.groups:
             for entry in group.evidence:
                 print(aggregate.event_type, entry.occurrences, list(entry.positions))
 
-    restored = await engine.materialize(
-        parser, LOG, parser.deserialize(stored), context
-    )
+    restored = await engine.materialize(parser, LOG, await engine.deserialize(stored), context)
     print("identical:", restored == result.events)
 
 

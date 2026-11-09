@@ -1,0 +1,25 @@
+{
+  "skill_name": "parsefabric",
+  "queries": [
+    {"query": "parse our nginx error logs with parsefabric and keep the line number of every failure", "should_trigger": true, "split": "train"},
+    {"query": "store parsed log events compactly and prove we can rebuild them exactly later", "should_trigger": true, "split": "train"},
+    {"query": "materialize raises IntegrityError on aggregates from yesterday, what changed?", "should_trigger": true, "split": "train"},
+    {"query": "our log file mixes JSON, SQL and python tracebacks; split it into typed events", "should_trigger": true, "split": "train"},
+    {"query": "parse 10 million log lines across processes with parsefabric without wrong line numbers", "should_trigger": true, "split": "train"},
+    {"query": "send parsefabric lifecycle events to OpenTelemetry and Jaeger", "should_trigger": true, "split": "train"},
+    {"query": "summarize parsed incident evidence with gpt so every claim cites a line", "should_trigger": true, "split": "validation"},
+    {"query": "expose a parsefabric parser as a LangChain tool for our agent", "should_trigger": true, "split": "validation"},
+    {"query": "parse df -h output into structured records with evidence", "should_trigger": true, "split": "validation"},
+    {"query": "ParseEngine.parse returns a coroutine instead of a result", "should_trigger": true, "split": "validation"},
+    {"query": "write a parsefabric Parser subclass for our binary audit format", "should_trigger": false, "split": "train"},
+    {"query": "implement an ExecutionBackend for Ray so parsefabric can use our cluster", "should_trigger": false, "split": "train"},
+    {"query": "my custom AggregateCodec fails check_codec, help", "should_trigger": false, "split": "train"},
+    {"query": "ship application logs from Kubernetes to Elasticsearch", "should_trigger": false, "split": "train"},
+    {"query": "set up a Prometheus alert when error rate rises", "should_trigger": false, "split": "train"},
+    {"query": "write a LanguageModel subclass that calls our in-house LLM gateway", "should_trigger": false, "split": "train"},
+    {"query": "build a full-text search UI over our logs", "should_trigger": false, "split": "validation"},
+    {"query": "create a parsefabric ObservabilitySink that publishes to Kafka", "should_trigger": false, "split": "validation"},
+    {"query": "configure logrotate to compress logs daily", "should_trigger": false, "split": "validation"},
+    {"query": "add a ParserRegistry backed by PostgreSQL", "should_trigger": false, "split": "validation"}
+  ]
+}

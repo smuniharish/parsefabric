@@ -54,7 +54,7 @@ class RecordingSink(ObservabilitySink):
     def __init__(self) -> None:
         self.events: list[LifecycleEvent] = []
 
-    def emit(self, event: LifecycleEvent) -> None:
+    async def emit(self, event: LifecycleEvent) -> None:
         self.events.append(event)
 
 
@@ -159,9 +159,7 @@ def test_live_verifier_expectations_match_current_mixed_fixture() -> None:
         ("context", []),
     ],
 )
-def test_worker_rejects_incompatible_or_oversized_jobs(
-    field: str, value: object
-) -> None:
+def test_worker_rejects_incompatible_or_oversized_jobs(field: str, value: object) -> None:
     job: dict[str, object] = {
         "schema_version": "1",
         "parser_name": "application-log",
@@ -473,9 +471,7 @@ async def test_backend_cancellation_revokes_without_terminating_running_work(
     monkeypatch.setattr(celery_app, "AsyncResult", lambda task_id: FakeResult())
     sink = RecordingSink()
     async with CeleryExecutionBackend(sink=sink) as backend:
-        task = asyncio.create_task(
-            backend.run(parse_application_log, "database timeout")
-        )
+        task = asyncio.create_task(backend.run(parse_application_log, "database timeout"))
         try:
             assert await asyncio.to_thread(started.wait, 2)
             task.cancel()

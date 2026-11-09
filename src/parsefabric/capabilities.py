@@ -18,7 +18,6 @@ class ParserCapabilities:
     Attributes:
         deterministic: The same input and context always produce the same
             result.
-        incremental: The parser handles inputs one at a time from a stream.
         stateful: Results depend on earlier inputs.
         requires_order: Inputs must be parsed in order.
         parallel_safe: One instance may parse several inputs concurrently.
@@ -26,14 +25,13 @@ class ParserCapabilities:
             independently; requires a deterministic, parallel-safe, stateless,
             order-independent parser and a ``partition_framing``.
         partition_framing: Record framing of partitions, such as ``"line"``.
-        aggregatable: Events may be aggregated by the package.
+        aggregatable: Events may be aggregated by the engine.
 
     Raises:
         ValueError: If a flag is not a bool or the combination is unsafe.
     """
 
     deterministic: bool = False
-    incremental: bool = False
     stateful: bool = False
     requires_order: bool = False
     parallel_safe: bool = False
@@ -43,9 +41,7 @@ class ParserCapabilities:
 
     def __post_init__(self) -> None:
         for item in fields(self):
-            if item.name != "partition_framing" and not isinstance(
-                getattr(self, item.name), bool
-            ):
+            if item.name != "partition_framing" and not isinstance(getattr(self, item.name), bool):
                 raise ValueError(f"capability {item.name} must be a bool")
         if self.partition_framing is not None and (
             not isinstance(self.partition_framing, str) or not self.partition_framing
@@ -95,8 +91,7 @@ class ParserCapabilities:
         self.require_partitionable()
         if self.partition_framing != framing:
             raise CapabilityError(
-                f"parser partition framing {self.partition_framing!r} "
-                f"does not match {framing!r}"
+                f"parser partition framing {self.partition_framing!r} does not match {framing!r}"
             )
 
     def require_parallel_safe(self) -> None:

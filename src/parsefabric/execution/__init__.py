@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from parsefabric.execution._executor import ExecutorBackend
 from parsefabric.execution.async_backend import AsyncExecutionBackend
 from parsefabric.execution.base import ExecutionBackend
 from parsefabric.execution.process_backend import ProcessExecutionBackend
@@ -10,6 +11,7 @@ from parsefabric.execution.thread_backend import ThreadExecutionBackend
 __all__ = [
     "AsyncExecutionBackend",
     "ExecutionBackend",
+    "ExecutorBackend",
     "ProcessExecutionBackend",
     "ThreadExecutionBackend",
 ]

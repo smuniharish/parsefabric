@@ -21,6 +21,7 @@ from parsefabric.parser import DeterministicParser
 from parsefabric.partitioning import LinePartitioner
 from parsefabric.patterns import RegexPattern
 from parsefabric.serialization import dumps_result, loads_result
+from tests.support.aio import collect
 
 BOUNDARIES = (
     "\n",
@@ -87,7 +88,7 @@ def test_generated_unicode_parse_bytes_spans_and_evidence_roundtrip(
             assert event.attributes["message"] == raw.splitlines()[0]
         assert cursor == offset + len(source.encode("utf-8"))
         aggregates = await parser.aggregate(_stream(result.events))
-        decoded = parser.deserialize(parser.serialize(aggregates))
+        decoded = await ParseEngine().deserialize(await ParseEngine().serialize(aggregates))
         rebuilt = await engine.materialize(parser, source, decoded, context)
         assert dumps_result(replace(result, events=rebuilt)) == dumps_result(result)
 
@@ -106,10 +107,9 @@ def test_generated_partition_limits_exact_events_and_normalized_reconstruction(
     async def verify() -> None:
         parser = _parser()
         max_bytes = (
-            max((len(record.encode("utf-8")) + 1 for record in records), default=1)
-            + extra_bytes
+            max((len(record.encode("utf-8")) + 1 for record in records), default=1) + extra_bytes
         )
-        partitions = tuple(
+        partitions = await collect(
             LinePartitioner(max_lines=max_lines, max_bytes=max_bytes).partition(
                 [record + separator for record in records],
                 source_id="partitioned",
@@ -128,9 +128,7 @@ def test_generated_partition_limits_exact_events_and_normalized_reconstruction(
             assert len(partition.content.encode("utf-8")) <= max_bytes
             result = await parser.parse(
                 partition.content,
-                ParseContext(
-                    source_id="partitioned", source_offset=partition.start_offset
-                ),
+                ParseContext(source_id="partitioned", source_offset=partition.start_offset),
             )
             for event in result.events:
                 assert event.evidence.line_number is not None
@@ -138,9 +136,7 @@ def test_generated_partition_limits_exact_events_and_normalized_reconstruction(
                     event.with_evidence(
                         replace(
                             event.evidence,
-                            line_number=partition.start_line
-                            + event.evidence.line_number
-                            - 1,
+                            line_number=partition.start_line + event.evidence.line_number - 1,
                         )
                     )
                 )
@@ -162,10 +158,8 @@ def test_generated_json_retained_and_reparsed_materialization(value: JSONValue) 
         for reproducible in (False, True):
             aggregator = EvidenceAggregator(reproducible=reproducible)
             aggregates = await aggregator.aggregate(result.events)
-            decoded = parser.deserialize(parser.serialize(aggregates))
-            rebuilt = await aggregator.materialize(
-                decoded, result.events if reproducible else None
-            )
+            decoded = await ParseEngine().deserialize(await ParseEngine().serialize(aggregates))
+            rebuilt = await aggregator.materialize(decoded, result.events if reproducible else None)
             assert dumps_result(replace(result, events=rebuilt)) == dumps_result(result)
 
     asyncio.run(verify())
@@ -178,9 +172,7 @@ def test_generated_statistical_merge_matches_whole_with_json_type_identity(
     async def verify() -> None:
         aggregator = EventAggregator(group_by=("value",))
         events = tuple(
-            ParsedEvent(
-                "record", {"value": value}, evidence=Evidence(line_number=index)
-            )
+            ParsedEvent("record", {"value": value}, evidence=Evidence(line_number=index))
             for index, value in enumerate(values, start=1)
         )
         whole = await aggregator.aggregate(events)

@@ -91,7 +91,7 @@ boundaries as `str.splitlines`.
 
 Parser exceptions propagate by default; cancellation always propagates. With
 `continue_on_error=True`, the engine returns a result whose `errors` holds a
-`ParseIssue` with the exception type and message, so one bad input does not
+`ParseIssue` with the exception type, message and traceback, so one bad input does not
 stop a stream. Some parsers record expected problems as issues on their own:
 `JSONParser` and `CLIOutputParser`, for example, return an `unparsed` event
 and an issue for input they cannot decode.

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -23,14 +22,15 @@ from parsefabric import (
     ParserCapabilities,
 )
 from parsefabric._summary_review import Fact, check_claims
-from parsefabric.aggregation import CountAggregate, EvidenceEntry, EvidenceGroup, codec
+from parsefabric.aggregation import CountAggregate, EvidenceEntry, EvidenceGroup
 from parsefabric.builtins import (
     CLIOutputParser,
-    CodeDetector,
     JSONParser,
     MixedContentParser,
     PythonTracebackParser,
+    TreeSitterCodeDetector,
 )
+from parsefabric.codecs import EvidenceCodec
 from parsefabric.errors import (
     ParseError,
     RegistryError,
@@ -41,17 +41,16 @@ from parsefabric.observability import LifecycleEvent, OpenTelemetryObservability
 from parsefabric.parser import DeterministicParser
 from parsefabric.partitioning import LinePartitioner
 from parsefabric.patterns import RegexPattern
-from parsefabric.registry import ParserRegistry
+from parsefabric.registry import InMemoryParserRegistry
 from parsefabric.summarization import DEFAULT_MAX_AGGREGATES, EvidenceSummarizer
+from tests.support.summary_model import ScriptedModel
 
 _FACTS = (Fact("e0", "s", "error", "ERROR", "boom", 1, (1,), (), False),)
 
 
 def test_claim_checks_report_unknown_context_and_blank_text() -> None:
     claim = {"text": "Boom.", "evidence_ids": ["e0"], "occurrences": 1}
-    _, issues = check_claims(
-        json.dumps({"claims": [claim | {"context_ids": ["missing"]}]}), _FACTS
-    )
+    _, issues = check_claims(json.dumps({"claims": [claim | {"context_ids": ["missing"]}]}), _FACTS)
     assert issues == ["Claim 1: unknown context IDs.", _MISSING_REQUIRED]
     _, issues = check_claims(json.dumps({"claims": [claim | {"text": "   "}]}), _FACTS)
     assert issues == ["Claim 1: text must not be blank."]
@@ -64,13 +63,13 @@ _MISSING_REQUIRED = "Include every error/warning finding with its exact total."
 
 
 async def _fence_aggregates() -> Any:
-    parser = MixedContentParser(code_languages=())
+    parser = MixedContentParser(code_detector=None)
     result = await parser.parse("```\n```", ParseContext(source_id="fences"))
     return await EvidenceAggregator().aggregate(result.events)
 
 
 async def test_summary_without_task_relevant_claims_fails_explicitly() -> None:
-    model = FakeListChatModel(responses=['{"claims": []}', '{"issues": []}'])
+    model = ScriptedModel(responses=['{"claims": []}', '{"issues": []}'])
     summarizer = EvidenceSummarizer(model)
     assert summarizer.max_aggregates == DEFAULT_MAX_AGGREGATES
     with pytest.raises(SummaryValidationError, match="no task-relevant claims"):
@@ -78,33 +77,33 @@ async def test_summary_without_task_relevant_claims_fails_explicitly() -> None:
 
 
 async def test_summarizer_rejects_invalid_drafts_and_items() -> None:
-    summarizer = EvidenceSummarizer(FakeListChatModel(responses=["unused"]))
+    summarizer = EvidenceSummarizer(ScriptedModel(responses=["unused"]))
     aggregates = await _fence_aggregates()
     for draft in ("", "   "):
         with pytest.raises(ValueError, match="draft"):
             await summarizer.summarize(aggregates, draft=draft)
     with pytest.raises(TypeError, match="EvidenceAggregate"):
-        await summarizer.summarize([object()])  # type: ignore[list-item]
+        # pyrefly: ignore[bad-argument-type]
+        await summarizer.summarize([object()])
 
 
 def test_count_aggregates_require_object_keys() -> None:
     with pytest.raises(ValueError, match="key attributes must be a JSON object"):
-        CountAggregate("x", 1, None, None, [])  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        CountAggregate("x", 1, None, None, [])
 
 
 @pytest.mark.parametrize(
     ("document", "message"),
     [
-        ({"format": codec.FORMAT, "aggregates": {}}, "aggregates must be a list"),
+        ({"format": EvidenceCodec.FORMAT, "aggregates": {}}, "aggregates must be a list"),
         ({"format": "other/1", "aggregates": []}, "expected a"),
-        ({"format": codec.FORMAT}, "missing aggregates"),
+        ({"format": EvidenceCodec.FORMAT}, "missing aggregates"),
     ],
 )
-def test_aggregate_documents_are_validated(
-    document: dict[str, Any], message: str
-) -> None:
+async def test_aggregate_documents_are_validated(document: dict[str, Any], message: str) -> None:
     with pytest.raises(SerializationError, match=message):
-        codec.decode(json.dumps(document))
+        await EvidenceCodec().decode(json.dumps(document))
 
 
 async def _retained_document() -> dict[str, Any]:
@@ -128,9 +127,9 @@ async def _retained_document() -> dict[str, Any]:
 async def test_evidence_entries_are_decoded_strictly(change: Any, message: str) -> None:
     document = await _retained_document()
     change(document["groups"][0]["evidence"][0])
-    payload = json.dumps({"format": codec.FORMAT, "aggregates": [document]})
+    payload = json.dumps({"format": EvidenceCodec.FORMAT, "aggregates": [document]})
     with pytest.raises(SerializationError, match=message):
-        codec.decode(payload)
+        await EvidenceCodec().decode(payload)
 
 
 def test_evidence_group_totals_its_occurrences() -> None:
@@ -140,20 +139,14 @@ def test_evidence_group_totals_its_occurrences() -> None:
     assert group.occurrences == 3
 
 
-async def test_runs_break_between_unlocated_spans_that_do_not_touch() -> None:
+async def test_unlocated_recurrences_share_one_entry() -> None:
     events = [
-        ParsedEvent(
-            "x", {"message": "m"}, evidence=Evidence(start_offset=0, end_offset=2)
-        ),
-        ParsedEvent(
-            "x", {"message": "m"}, evidence=Evidence(start_offset=2, end_offset=4)
-        ),
-        ParsedEvent(
-            "x", {"message": "m"}, evidence=Evidence(start_offset=9, end_offset=9)
-        ),
+        ParsedEvent("x", {"message": "m"}, evidence=Evidence(start_offset=0, end_offset=2)),
+        ParsedEvent("x", {"message": "m"}, evidence=Evidence(start_offset=2, end_offset=4)),
+        ParsedEvent("x", {"message": "m"}, evidence=Evidence(start_offset=9, end_offset=9)),
     ]
     (aggregate,) = await EvidenceAggregator().aggregate(events)
-    assert [entry.occurrences for entry in aggregate.groups[0].evidence] == [2, 1]
+    assert [entry.occurrences for entry in aggregate.groups[0].evidence] == [3]
 
 
 async def test_cli_command_mode_accepts_bytes_and_rejects_non_json_records(
@@ -167,36 +160,34 @@ async def test_cli_command_mode_accepts_bytes_and_rejects_non_json_records(
 
     from parsefabric.builtins import cli_output
 
-    monkeypatch.setattr(
-        cli_output.jc, "parse", lambda *args, **kwargs: [{"value": float("nan")}]
-    )
+    monkeypatch.setattr(cli_output.jc, "parse", lambda *args, **kwargs: [{"value": float("nan")}])
     result = await parser.parse("name=shop")
     assert [event.event_type for event in result.events] == ["unparsed"]
     assert result.errors[0].error_type == "ParseError"
     assert "non-finite" in result.errors[0].message
 
 
-def test_code_detection_distinguishes_statements_calls_and_prose() -> None:
-    sql = CodeDetector(["sql"])
-    assert sql.detect("SET x = 1;") is None
-    assert sql.detect("SELECT 1;") == "sql"
-    assert sql.detect("select the order") is None
-    python = CodeDetector(["python"])
-    assert python.detect("print('hello')") == "python"
-    assert python.detect("Total (approx)") is None
-    disabled = CodeDetector([])
+async def test_code_detection_distinguishes_statements_calls_and_prose() -> None:
+    sql = TreeSitterCodeDetector(["sql"])
+    assert await sql.detect("SET x = 1;") is None
+    assert await sql.detect("SELECT 1;") == "sql"
+    assert await sql.detect("select the order") is None
+    python = TreeSitterCodeDetector(["python"])
+    assert await python.detect("print('hello')") == "python"
+    assert await python.detect("Total (approx)") is None
+    disabled = TreeSitterCodeDetector([])
     assert disabled.languages == ()
-    assert disabled.detect("print('hello')") is None
+    assert await disabled.detect("print('hello')") is None
 
 
 async def test_json_routes_close_values_on_mismatched_brackets() -> None:
     parser = MixedContentParser(
         routes=[(RegexPattern("json-line", r"^[\[{]"), JSONParser())],
-        code_languages=(),
+        code_detector=None,
     )
     result = await parser.parse('{"a": ]\nnext line')
     assert [event.event_type for event in result.events] == ["unparsed", "other"]
-    assert result.errors[0].error_type == "DecodeError"
+    assert result.errors[0].error_type == "ParseError"
 
 
 @pytest.mark.parametrize("kind", ["routes", "fence_routes"])
@@ -233,9 +224,7 @@ async def test_traceback_ignores_source_lines_between_frames() -> None:
         ({"requires_order": True, "parallel_safe": True}, "order-dependent parsers"),
     ],
 )
-def test_capabilities_reject_unsafe_concurrency(
-    arguments: dict[str, Any], message: str
-) -> None:
+def test_capabilities_reject_unsafe_concurrency(arguments: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         ParserCapabilities(**arguments)
 
@@ -254,7 +243,8 @@ def test_event_evidence_replacement_validates_and_keeps_subclasses() -> None:
         {"a": 1},
     )
     with pytest.raises(ValueError, match="Evidence instance"):
-        ParsedEvent("x").with_evidence({})  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        ParsedEvent("x").with_evidence({})
 
 
 @pytest.mark.parametrize(
@@ -268,21 +258,21 @@ def test_lifecycle_events_validate_names_and_identifiers(
         LifecycleEvent(**arguments)
 
 
-def test_terminal_events_close_the_innermost_matching_span() -> None:
+async def test_terminal_events_close_the_innermost_matching_span() -> None:
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     sink = OpenTelemetryObservabilitySink(provider.get_tracer("test"))
-    sink.emit(LifecycleEvent("ExecutionSubmitted"))
-    sink.emit(LifecycleEvent("ParseCompleted"))
+    await sink.emit(LifecycleEvent("ExecutionSubmitted"))
+    await sink.emit(LifecycleEvent("ParseCompleted"))
     assert exporter.get_finished_spans() == ()
-    sink.emit(LifecycleEvent("ParserSelected"))
-    sink.emit(LifecycleEvent("ExecutionSubmitted"))
-    sink.emit(LifecycleEvent("ParseCompleted"))
+    await sink.emit(LifecycleEvent("ParserSelected"))
+    await sink.emit(LifecycleEvent("ExecutionSubmitted"))
+    await sink.emit(LifecycleEvent("ParseCompleted"))
     (parse,) = exporter.get_finished_spans()
     assert parse.name == "parsefabric.parse"
-    sink.emit(LifecycleEvent("ExecutionCompleted"))
-    sink.emit(LifecycleEvent("ExecutionCompleted"))
+    await sink.emit(LifecycleEvent("ExecutionCompleted"))
+    await sink.emit(LifecycleEvent("ExecutionCompleted"))
     names = [span.name for span in exporter.get_finished_spans()]
     assert names == [
         "parsefabric.parse",
@@ -307,18 +297,19 @@ async def test_deterministic_parsers_pickle_and_stop_at_first_match() -> None:
     assert [pattern.name for pattern in restored.patterns] == ["high", "low", "other"]
 
 
-def test_partitioner_rejects_non_text_records() -> None:
+async def test_partitioner_rejects_non_text_records() -> None:
     partitions = LinePartitioner().partition(
-        ["ok", b"bytes"],  # type: ignore[list-item]
+        # pyrefly: ignore[bad-argument-type]
+        ["ok", b"bytes"],
         capabilities=DeterministicParser([], name="x").capabilities,
     )
     with pytest.raises(TypeError, match="requires strings"):
-        list(partitions)
+        [partition async for partition in partitions]
 
 
-def test_registry_lookup_of_missing_parser_fails_explicitly() -> None:
-    registry = ParserRegistry()
+async def test_registry_lookup_of_missing_parser_fails_explicitly() -> None:
+    registry = InMemoryParserRegistry()
     with pytest.raises(RegistryError, match="not registered"):
-        registry.get("missing")
+        await registry.get("missing")
     with pytest.raises(RegistryError, match="not registered"):
-        registry.metadata("missing")
+        await registry.metadata("missing")

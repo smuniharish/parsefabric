@@ -126,9 +126,11 @@ def test_result_decoder_rejects_ambiguous_or_malformed_json(
 
 def test_result_decoder_rejects_non_text_payloads() -> None:
     with pytest.raises(TypeError, match="str or bytes"):
-        loads_result(1)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        loads_result(1)
     with pytest.raises(TypeError, match="ParseResult"):
-        dumps_result({})  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        dumps_result({})
 
 
 def test_result_wire_requires_objects_and_ndjson_is_one_result_per_line() -> None:
@@ -176,9 +178,7 @@ async def test_timestamped_input_errors(source: str) -> None:
 
 
 async def test_timestamped_custom_pattern_incomplete_and_invalid_timestamp() -> None:
-    parser = TimestampedLogParser(
-        line_pattern=r"(?P<at>\S+) (?P<level>\S*) (?P<message>.*)"
-    )
+    parser = TimestampedLogParser(line_pattern=r"(?P<at>\S+) (?P<level>\S*) (?P<message>.*)")
     with pytest.raises(ParseError, match="incomplete"):
         await parser.parse("2026-01-01T00:00:00Z INFO ")
     with pytest.raises(ParseError, match="timestamp"):
@@ -216,22 +216,22 @@ def test_deterministic_patterns_reject_duplicates_and_missing_removal() -> None:
 
 def test_async_and_semantic_names_must_be_nonempty() -> None:
     class Async(AsyncParser):
-        async def parse(
-            self, source: object, context: ParseContext | None = None
-        ) -> ParseResult:
+        async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
             return ParseResult()
 
     with pytest.raises(ValueError):
         Async(name="")
 
     class Semantic(SemanticParser):
-        async def parse(
-            self, source: object, context: ParseContext | None = None
-        ) -> ParseResult:
+        async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
             return ParseResult()
 
     with pytest.raises(ValueError):
         Semantic(name="")
+    with pytest.raises(TypeError, match="LanguageModel"):
+        # pyrefly: ignore[bad-argument-type]
+        Semantic(name="semantic", model=object())
+    assert Semantic(name="semantic").model is None
 
 
 async def test_engine_async_iter_many_continue_on_error_and_merge_errors() -> None:
@@ -242,14 +242,11 @@ async def test_engine_async_iter_many_continue_on_error_and_merge_errors() -> No
         yield 1
 
     streamed = [
-        result
-        async for result in engine.parse_iter(parser, sources(), continue_on_error=True)
+        result async for result in engine.parse_iter(parser, sources(), continue_on_error=True)
     ]
     assert len(streamed) == 2
     assert streamed[1].errors[0].error_type == "TypeError"
-    assert await engine.parse_many(parser, sources(), continue_on_error=True) == tuple(
-        streamed
-    )
+    assert await engine.parse_many(parser, sources(), continue_on_error=True) == tuple(streamed)
     assert await engine.parse_many(parser, ["timeout"]) == (streamed[0],)
     aggregates = await engine.aggregate(parser, streamed[0].events)
     assert await engine.merge_aggregates(parser, aggregates) == aggregates
@@ -261,9 +258,7 @@ async def test_direct_parse_cancellation_is_not_converted_into_issue() -> None:
     entered = asyncio.Event()
 
     class Blocking(AsyncParser):
-        async def parse(
-            self, source: object, context: ParseContext | None = None
-        ) -> ParseResult:
+        async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
             entered.set()
             await asyncio.Event().wait()
             return ParseResult()

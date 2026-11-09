@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import Counter
 from typing import Any, cast
 
@@ -20,21 +21,19 @@ _INVALID = (
     "must be JSON-compatible: strings, finite numbers, booleans, null, "
     "lists, and objects with string keys"
 )
-_ENCODER = json.JSONEncoder(ensure_ascii=False, allow_nan=False, separators=(",", ":"))
-_SORTED_ENCODER = json.JSONEncoder(
-    ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+# Validated values are trees, so the compact encoders skip cycle checks.
+_ENCODER = json.JSONEncoder(
+    ensure_ascii=False, allow_nan=False, separators=(",", ":"), check_circular=False
 )
-# Validated model values are trees, so these encoders skip cycle checks.
-_CANONICAL_ENCODER = json.JSONEncoder(
+_SORTED_ENCODER = json.JSONEncoder(
     ensure_ascii=False,
     allow_nan=False,
     separators=(",", ":"),
     sort_keys=True,
     check_circular=False,
 )
-_VALIDATED_ENCODER = json.JSONEncoder(
-    ensure_ascii=False, allow_nan=False, separators=(",", ":"), check_circular=False
-)
+# Strings may contain brackets; skip them when measuring nesting.
+_DEPTH_TOKENS = re.compile(r'"(?:[^"\\]|\\.)*"|[\[\]{}]')
 
 
 def check_text(value: str, what: str) -> str:
@@ -74,9 +73,7 @@ def _is_scalar(value: object, what: str) -> bool:
     raise ValueError(f"{what} {_INVALID}")
 
 
-def copy_json(
-    value: object, what: str = "JSON value", *, max_depth: int = MAX_JSON_DEPTH
-) -> Any:
+def copy_json(value: object, what: str = "JSON value", *, max_depth: int = MAX_JSON_DEPTH) -> Any:
     """Validate a JSON-compatible value and return an independent deep copy.
 
     Lists and objects are copied so that callers cannot mutate a validated
@@ -163,11 +160,34 @@ def _reject_constant(name: str) -> object:
     raise ValueError(f"{name} is not a JSON number")
 
 
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"JSON number {text} is out of range")
+    return value
+
+
+def _check_depth(text: str) -> None:
+    """Reject documents nested deeper than `MAX_JSON_DEPTH` before decoding."""
+    if text.count("[") + text.count("{") <= MAX_JSON_DEPTH:
+        return
+    depth = 0
+    for match in _DEPTH_TOKENS.finditer(text):
+        bracket = match.group()
+        if bracket in "[{":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise ValueError(f"JSON document nests deeper than {MAX_JSON_DEPTH} levels")
+        elif bracket in "]}":
+            depth -= 1
+
+
 def loads(payload: str | bytes | bytearray) -> Any:
     """Decode one strict RFC 8259 JSON document.
 
-    Bytes must be UTF-8. Duplicate object keys, ``NaN``/``Infinity`` and
-    nesting too deep for the decoder are rejected.
+    Bytes must be UTF-8. Duplicate object keys, ``NaN``/``Infinity``, numbers
+    outside the float range and nesting deeper than `MAX_JSON_DEPTH` are
+    rejected.
 
     Args:
         payload: JSON text or UTF-8 bytes.
@@ -185,31 +205,36 @@ def loads(payload: str | bytes | bytearray) -> Any:
         text = payload
     else:
         raise TypeError("JSON payload must be str or bytes")
-    try:
-        return json.loads(
-            text, object_pairs_hook=_unique_object, parse_constant=_reject_constant
-        )
-    except RecursionError as error:
-        raise ValueError("JSON document nests too deeply") from error
-
-
-def dumps(value: object, *, indent: int | None = None, sort_keys: bool = False) -> str:
-    """Encode a JSON-compatible value as compact UTF-8-safe JSON text."""
-    if indent is None:
-        return (_SORTED_ENCODER if sort_keys else _ENCODER).encode(value)
-    return json.dumps(
-        value, ensure_ascii=False, allow_nan=False, indent=indent, sort_keys=sort_keys
+    _check_depth(text)
+    return json.loads(
+        text,
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_constant,
+        parse_float=_finite_float,
     )
 
 
-def canonical_dumps(value: object) -> str:
-    """Encode a validated value as canonical JSON: compact with sorted keys."""
-    return _CANONICAL_ENCODER.encode(value)
+def dumps(value: object, *, indent: int | None = None, sort_keys: bool = False) -> str:
+    """Encode a validated, acyclic JSON value as UTF-8-safe JSON text.
 
+    Args:
+        value: The value to encode.
+        indent: Indentation for human reading; compact when ``None``.
+        sort_keys: Sort object keys, for canonical output.
 
-def dumps_validated(value: object) -> str:
-    """Encode an already-validated, acyclic value as compact JSON."""
-    return _VALIDATED_ENCODER.encode(value)
+    Returns:
+        The JSON text.
+    """
+    if indent is None:
+        return (_SORTED_ENCODER if sort_keys else _ENCODER).encode(value)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        indent=indent,
+        sort_keys=sort_keys,
+        check_circular=False,
+    )
 
 
 def require_object(

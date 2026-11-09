@@ -32,6 +32,7 @@ OFFLINE = (
     "observability.py",
     "custom_sql.py",
     "mixed_custom_and_builtin.py",
+    "langchain_agent.py",
 )
 
 
@@ -52,9 +53,7 @@ def run(name: str) -> str:
         check=False,
     )
     if completed.returncode:
-        raise RuntimeError(
-            f"{name} failed ({completed.returncode}): {completed.stderr.strip()}"
-        )
+        raise RuntimeError(f"{name} failed ({completed.returncode}): {completed.stderr.strip()}")
     if not completed.stdout.strip():
         raise RuntimeError(f"{name} printed no example output")
     return completed.stdout
@@ -95,9 +94,7 @@ def verify(*, update: bool = False) -> list[str]:
 
 def main() -> None:
     options = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    options.add_argument(
-        "--update", action="store_true", help="record the current output"
-    )
+    options.add_argument("--update", action="store_true", help="record the current output")
     update = options.parse_args().update
     names = verify(update=update)
     print(f"{len(names)} examples {'recorded' if update else 'verified'}")

@@ -1,11 +1,15 @@
 """ParseFabric: composable parsers with traceable, losslessly aggregated evidence.
 
 The package root exports the engine, the result models, the parser
-contracts, aggregation types and errors. Built-in parsers live in
-`parsefabric.builtins`, patterns in `parsefabric.patterns`,
-execution backends in `parsefabric.execution` and lifecycle sinks in
-`parsefabric.observability`.
+contracts, aggregation types, the language-model contract and errors.
+Built-in parsers live in `parsefabric.builtins`, patterns in
+`parsefabric.patterns`, execution backends in `parsefabric.execution`,
+lifecycle sinks in `parsefabric.observability`, partitioners in
+`parsefabric.partitioning`, summaries in `parsefabric.summarization` and
+framework adapters in `parsefabric.integrations`.
 """
+
+from importlib.metadata import version
 
 from parsefabric._json import MAX_JSON_DEPTH
 from parsefabric.aggregation import (
@@ -18,6 +22,7 @@ from parsefabric.aggregation import (
     RoutingAggregator,
 )
 from parsefabric.capabilities import ParserCapabilities
+from parsefabric.codecs import AggregateCodec, EvidenceCodec, JSONCodec, StrictJSONCodec
 from parsefabric.compression import CompressionMetrics, measure_compression
 from parsefabric.engine import ParseEngine
 from parsefabric.errors import (
@@ -32,6 +37,7 @@ from parsefabric.errors import (
     SerializationError,
     SummaryValidationError,
 )
+from parsefabric.llm import ChatMessage, LanguageModel
 from parsefabric.models import (
     Evidence,
     ParseContext,
@@ -41,14 +47,16 @@ from parsefabric.models import (
 )
 from parsefabric.parser import AsyncParser, DeterministicParser, Parser, SemanticParser
 
-__version__ = "0.1.0"
+__version__ = version("parsefabric")
 
 __all__ = [
     "MAX_JSON_DEPTH",
     "Aggregate",
+    "AggregateCodec",
     "Aggregator",
     "AsyncParser",
     "CapabilityError",
+    "ChatMessage",
     "CompressionMetrics",
     "ConfigurationError",
     "DeterministicParser",
@@ -56,9 +64,12 @@ __all__ = [
     "Evidence",
     "EvidenceAggregate",
     "EvidenceAggregator",
+    "EvidenceCodec",
     "EvidenceEntry",
     "EvidenceGroup",
     "IntegrityError",
+    "JSONCodec",
+    "LanguageModel",
     "ParseContext",
     "ParseEngine",
     "ParseError",
@@ -73,6 +84,7 @@ __all__ = [
     "RoutingAggregator",
     "SemanticParser",
     "SerializationError",
+    "StrictJSONCodec",
     "SummaryValidationError",
     "__version__",
     "measure_compression",

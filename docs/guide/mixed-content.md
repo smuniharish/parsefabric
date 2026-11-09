@@ -58,7 +58,7 @@ aggregates.
 | `patterns` | Line patterns; replaces the default `log-level` pattern |
 | `routes` | `(selector, parser)` pairs, tried in order |
 | `fence_routes` | Parser for each lowercase fence language tag, such as `{"sql": SQLParser()}` |
-| `code_languages` | Grammars used to detect unfenced code; `()` turns detection off |
+| `code_detector` | `CodeDetector` for unfenced code and untagged fences; `None` turns detection off |
 
 Pattern and selector names must be unique, and `code`, `code_fence` and
 `other` are reserved. Routed parsers that share a name must be the same

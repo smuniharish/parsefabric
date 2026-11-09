@@ -4,9 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Raise lower bounds, so every dependency stays on its latest stable release.
+    versioning-strategy: increase
     groups:
-      python-dependencies:
+      python-minor-and-patch:
         patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: github-actions
     directory: /

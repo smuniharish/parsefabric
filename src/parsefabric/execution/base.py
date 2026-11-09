@@ -4,10 +4,33 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Iterable
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Coroutine,
+    Iterable,
+)
 from typing import Any, Self, overload
 
-from parsefabric.observability import NullObservabilitySink, ObservabilitySink
+from parsefabric.observability import (
+    LifecycleEvent,
+    LifecycleValue,
+    NullObservabilitySink,
+    ObservabilitySink,
+    publish,
+)
+
+
+async def _iterate[T](items: Iterable[T] | AsyncIterable[T]) -> AsyncGenerator[T, None]:
+    if isinstance(items, AsyncIterable):
+        async for item in items:
+            yield item
+    else:
+        for item in items:
+            yield item
 
 
 class ExecutionBackend(ABC):
@@ -17,13 +40,39 @@ class ExecutionBackend(ABC):
     concurrency or isolate CPU-heavy work. Backends are asynchronous context
     managers that release their resources on exit.
 
+    To run work elsewhere, such as on a task queue or a cluster, subclass it
+    and implement `run` and `shutdown`; `map` and the context manager come for
+    free. Report ``ExecutionSubmitted``, ``ExecutionStarted``,
+    ``ExecutionCompleted``, ``ExecutionFailed`` and ``ExecutionCancelled``
+    with `emit` so that sinks see a consistent lifecycle.
+
     Args:
         sink: Destination for ``Execution*`` lifecycle events. Defaults to a
             sink that discards them.
+
+    Raises:
+        TypeError: If ``sink`` is not an `ObservabilitySink`.
     """
 
     def __init__(self, sink: ObservabilitySink | None = None) -> None:
-        self._sink = sink or NullObservabilitySink()
+        if sink is not None and not isinstance(sink, ObservabilitySink):
+            raise TypeError("sink must be an ObservabilitySink")
+        self._sink = sink if sink is not None else NullObservabilitySink()
+
+    @property
+    def sink(self) -> ObservabilitySink:
+        """The sink receiving ``Execution*`` lifecycle events."""
+        return self._sink
+
+    async def emit(self, name: str, **attributes: LifecycleValue) -> None:
+        """Publish a lifecycle event to `sink`, never raising on sink errors.
+
+        Args:
+            name: Event name, such as ``"ExecutionStarted"``.
+            **attributes: Scalar event attributes, such as ``error_type``.
+        """
+        if type(self._sink) is not NullObservabilitySink:
+            await publish(self._sink, LifecycleEvent(name, attributes=attributes))
 
     @overload
     async def run[R](
@@ -44,9 +93,7 @@ class ExecutionBackend(ABC):
     ) -> R: ...
 
     @abstractmethod
-    async def run(
-        self, function: Callable[..., Any], /, *args: object, **kwargs: object
-    ) -> Any:
+    async def run(self, function: Callable[..., Any], /, *args: object, **kwargs: object) -> Any:
         """Run one callable and return its result, awaiting awaitable results.
 
         Args:
@@ -69,7 +116,7 @@ class ExecutionBackend(ABC):
     def map[Input, Output](
         self,
         function: Callable[[Input], Coroutine[Any, Any, Output] | Awaitable[Output]],
-        items: Iterable[Input],
+        items: Iterable[Input] | AsyncIterable[Input],
         *,
         max_in_flight: int = 1,
     ) -> AsyncIterator[Output]: ...
@@ -78,7 +125,7 @@ class ExecutionBackend(ABC):
     def map[Input, Output](
         self,
         function: Callable[[Input], Output],
-        items: Iterable[Input],
+        items: Iterable[Input] | AsyncIterable[Input],
         *,
         max_in_flight: int = 1,
     ) -> AsyncIterator[Output]: ...
@@ -86,7 +133,7 @@ class ExecutionBackend(ABC):
     async def map[Input](
         self,
         function: Callable[[Input], Any],
-        items: Iterable[Input],
+        items: Iterable[Input] | AsyncIterable[Input],
         *,
         max_in_flight: int = 1,
     ) -> AsyncIterator[Any]:
@@ -99,7 +146,8 @@ class ExecutionBackend(ABC):
 
         Args:
             function: Callable applied to each item.
-            items: Inputs, consumed lazily.
+            items: Inputs from a synchronous or asynchronous iterable,
+                consumed lazily.
             max_in_flight: Maximum number of scheduled, unconsumed calls.
 
         Yields:
@@ -110,15 +158,15 @@ class ExecutionBackend(ABC):
         """
         if type(max_in_flight) is not int or max_in_flight < 1:
             raise ValueError("max_in_flight must be a positive integer")
-        iterator = iter(items)
+        iterator = _iterate(items)
         pending: set[asyncio.Task[Any]] = set()
         exhausted = False
         try:
             while pending or not exhausted:
                 while not exhausted and len(pending) < max_in_flight:
                     try:
-                        item = next(iterator)
-                    except StopIteration:
+                        item = await anext(iterator)
+                    except StopAsyncIteration:
                         exhausted = True
                         break
                     pending.add(asyncio.create_task(self.run(function, item)))
@@ -135,6 +183,7 @@ class ExecutionBackend(ABC):
                 task.cancel()
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
+            await iterator.aclose()
 
     async def __aenter__(self) -> Self:
         return self

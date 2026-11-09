@@ -1,21 +1,27 @@
-"""Line partitioning for parsers that can parse independent chunks of a document."""
+"""Partitioning: split one document into chunks that parse independently."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from abc import ABC, abstractmethod
+from collections.abc import AsyncIterable, AsyncIterator, Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, override
 
-from parsefabric.capabilities import ParserCapabilities
 from parsefabric.observability import (
     LifecycleEvent,
     NullObservabilitySink,
     ObservabilitySink,
+    publish,
 )
 from parsefabric.parser._text import iter_text_lines
+
+if TYPE_CHECKING:
+    from parsefabric.capabilities import ParserCapabilities
 
 __all__ = [
     "LinePartitioner",
     "Partition",
+    "Partitioner",
 ]
 
 
@@ -40,13 +46,55 @@ class Partition:
     content: str
 
 
+async def _records(lines: Iterable[str] | AsyncIterable[str]) -> AsyncIterator[str]:
+    if isinstance(lines, AsyncIterable):
+        async for line in lines:
+            yield line
+    else:
+        for line in lines:
+            yield line
+
+
 def _positive(value: object, name: str) -> int:
     if type(value) is not int or value < 1:
         raise ValueError(f"{name} must be a positive integer")
     return value
 
 
-class LinePartitioner:
+class Partitioner(ABC):
+    """Split a document into `Partition` objects that parse independently.
+
+    Implement `partition` as an asynchronous generator. Check the parser's
+    `ParserCapabilities` first (for example with
+    `ParserCapabilities.require_framing`) and yield partitions in source
+    order with `Partition.start_line` and `Partition.start_offset` set so that
+    results can be re-based onto the whole document. Publish lifecycle events
+    with `parsefabric.observability.publish`.
+    """
+
+    @abstractmethod
+    def partition(
+        self,
+        lines: Iterable[str] | AsyncIterable[str],
+        *,
+        source_id: str | None = None,
+        capabilities: ParserCapabilities,
+    ) -> AsyncIterator[Partition]:
+        """Yield partitions of a document in source order.
+
+        Args:
+            lines: The document's records, from a synchronous or
+                asynchronous iterable.
+            source_id: Source document identifier copied into partitions.
+            capabilities: Capabilities of the parser that will parse the
+                partitions.
+
+        Yields:
+            Partitions in source order.
+        """
+
+
+class LinePartitioner(Partitioner):
     """Split complete text records into bounded, independently parsable chunks.
 
     Every record's own line terminator is normalized to a newline, so a
@@ -73,7 +121,9 @@ class LinePartitioner:
     ) -> None:
         self._max_lines = _positive(max_lines, "max_lines")
         self._max_bytes = _positive(max_bytes, "max_bytes")
-        self._sink = sink or NullObservabilitySink()
+        if sink is not None and not isinstance(sink, ObservabilitySink):
+            raise TypeError("sink must be an ObservabilitySink")
+        self._sink = sink if sink is not None else NullObservabilitySink()
 
     @property
     def max_lines(self) -> int:
@@ -85,17 +135,20 @@ class LinePartitioner:
         """Most UTF-8 bytes in one partition."""
         return self._max_bytes
 
-    def partition(
+    @override
+    async def partition(
         self,
-        lines: Iterable[str],
+        lines: Iterable[str] | AsyncIterable[str],
         *,
         source_id: str | None = None,
         capabilities: ParserCapabilities,
-    ) -> Iterator[Partition]:
+    ) -> AsyncIterator[Partition]:
         """Yield bounded partitions of complete records.
 
         Args:
-            lines: Records, each optionally ending with one line terminator.
+            lines: Records, each optionally ending with one line terminator,
+                from a synchronous or asynchronous iterable such as a file
+                read line by line.
             source_id: Source document identifier copied into partitions.
             capabilities: Capabilities of the parser that will parse the
                 partitions; they must allow line-framed partitioning.
@@ -115,7 +168,9 @@ class LinePartitioner:
         offset = 0
         partition_start_line = 1
         partition_number = 0
-        for line_number, raw_line in enumerate(lines, start=1):
+        line_number = 0
+        async for raw_line in _records(lines):
+            line_number += 1
             if not isinstance(raw_line, str):
                 raise TypeError("line partitioner requires strings")
             framed = iter_text_lines(raw_line)
@@ -127,8 +182,7 @@ class LinePartitioner:
             if record_bytes > self._max_bytes:
                 raise ValueError(f"line {line_number} exceeds the partition byte limit")
             if buffer and (
-                len(buffer) >= self._max_lines
-                or byte_count + record_bytes > self._max_bytes
+                len(buffer) >= self._max_lines or byte_count + record_bytes > self._max_bytes
             ):
                 partition = Partition(
                     partition_id=str(partition_number),
@@ -137,7 +191,7 @@ class LinePartitioner:
                     start_offset=offset - byte_count,
                     content="\n".join(buffer) + "\n",
                 )
-                self._emit_created(partition, len(buffer), byte_count)
+                await self._emit_created(partition, len(buffer), byte_count)
                 yield partition
                 buffer = []
                 byte_count = 0
@@ -154,19 +208,21 @@ class LinePartitioner:
                 start_offset=offset - byte_count,
                 content="\n".join(buffer),
             )
-            self._emit_created(partition, len(buffer), byte_count)
+            await self._emit_created(partition, len(buffer), byte_count)
             yield partition
 
-    def _emit_created(
+    async def _emit_created(
         self,
         partition: Partition,
         line_count: int,
         byte_count: int,
     ) -> None:
-        self._sink.emit(
-            LifecycleEvent(
-                "PartitionCreated",
-                partition_id=partition.partition_id,
-                attributes={"line_count": line_count, "byte_count": byte_count},
+        if type(self._sink) is not NullObservabilitySink:
+            await publish(
+                self._sink,
+                LifecycleEvent(
+                    "PartitionCreated",
+                    partition_id=partition.partition_id,
+                    attributes={"line_count": line_count, "byte_count": byte_count},
+                ),
             )
-        )

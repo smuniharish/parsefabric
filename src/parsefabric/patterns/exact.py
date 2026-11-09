@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
 
 from parsefabric._json import copy_json
 from parsefabric.patterns.base import Pattern
 from parsefabric.patterns.match import PatternMatch
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class ExactPattern(Pattern):
@@ -38,9 +40,7 @@ class ExactPattern(Pattern):
         attributes: Mapping[str, Any] | None = None,
         severity: str | None = None,
     ) -> None:
-        super().__init__(
-            name, priority=priority, metadata=metadata, event_type=event_type
-        )
+        super().__init__(name, priority=priority, metadata=metadata, event_type=event_type)
         if severity is not None and not isinstance(severity, str):
             raise ValueError("pattern severity must be a string or None")
         self._expected = expected
@@ -56,6 +56,4 @@ class ExactPattern(Pattern):
     def match(self, value: object) -> PatternMatch | None:
         if value != self._expected:
             return None
-        return PatternMatch(
-            attributes=copy_json(self._attributes), severity=self._severity
-        )
+        return PatternMatch(attributes=copy_json(self._attributes), severity=self._severity)

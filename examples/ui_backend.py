@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from custom_sql import SQLStatementParser
-from langchain_core.language_models import BaseLanguageModel
 from mixed_custom_and_builtin import _BRACKETED_LOG, make_parser
 
-from parsefabric.aggregation import EvidenceAggregate
 from parsefabric.builtins import (
     ApplicationLogParser,
     CLIOutputParser,
@@ -20,9 +19,13 @@ from parsefabric.builtins import (
 from parsefabric.engine import ParseEngine
 from parsefabric.errors import ConfigurationError, ParseError
 from parsefabric.models import ParseContext, ParseResult
-from parsefabric.parser import Parser
 from parsefabric.patterns import RegexPattern
 from parsefabric.summarization import EvidenceSummarizer
+
+if TYPE_CHECKING:
+    from parsefabric.aggregation import EvidenceAggregate
+    from parsefabric.llm import LanguageModel
+    from parsefabric.parser import Parser
 
 DATA = Path(__file__).resolve().parent / "data"
 SAMPLES: dict[str, str] = {
@@ -114,7 +117,7 @@ def build_parser(options: PlaygroundOptions) -> Parser:
 
 
 async def run_parse(
-    source: str, options: PlaygroundOptions, *, model: BaseLanguageModel | None = None
+    source: str, options: PlaygroundOptions, *, model: LanguageModel | None = None
 ) -> tuple[ParseResult, tuple[EvidenceAggregate, ...]]:
     """Parse and aggregate the same complete input without mutating it."""
     if not isinstance(source, str):
@@ -127,15 +130,13 @@ async def run_parse(
     if options.llm_enabled:
         if model is None:
             raise ConfigurationError(
-                "LLM summarization requires a configured LangChain model. "
-                "Set PARSEFABRIC_LLM_API_KEY and install the openai extra."
+                "LLM summarization requires a configured language model. "
+                "Set PARSEFABRIC_LLM_API_KEY and install the openai package."
             )
         summarizer = EvidenceSummarizer(model, max_aggregates=options.max_aggregates)
     parser = build_parser(options)
     engine = ParseEngine()
-    result = await engine.parse(
-        parser, source, ParseContext(source_id=options.source_id)
-    )
+    result = await engine.parse(parser, source, ParseContext(source_id=options.source_id))
     warnings = list(result.warnings)
     if not result.events:
         warnings.append("The selected parser found no matching events.")

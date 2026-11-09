@@ -20,10 +20,14 @@ without notice.
 | [`parsefabric.execution`](execution.md) | Asyncio, thread and process execution backends |
 | [`parsefabric.partitioning`](partitioning.md) | `LinePartitioner` and `Partition` |
 | [`parsefabric.observability`](observability.md) | Lifecycle events and observability sinks |
+| [`parsefabric.codecs`](codecs.md) | `AggregateCodec`, `EvidenceCodec`, `JSONCodec` and `StrictJSONCodec` |
 | [`parsefabric.serialization`](serialization.md) | JSON and NDJSON encoding of parse results |
 | [`parsefabric.compression`](compression.md) | Compression and token-savings metrics |
 | [`parsefabric.registry`](registry.md) | `ParserRegistry` and plugin discovery |
+| [`parsefabric.llm`](llm.md) | `LanguageModel` and `ChatMessage` |
 | [`parsefabric.summarization`](summarization.md) | `EvidenceSummarizer` for language-model reports |
+| [`parsefabric.integrations.langchain`](integrations.md) | LangChain models, tools and LangGraph nodes (the `langchain` extra) |
+| [`parsefabric.testing`](testing.md) | Contract checks for your own implementations of every extension point |
 | [`parsefabric.errors`](errors.md) | Exceptions and `ParseIssue` |
 
 ## The `parsefabric` namespace
@@ -38,6 +42,7 @@ applications only need `from parsefabric import ...`:
 | Parsers | `Parser`, `DeterministicParser`, `AsyncParser`, `SemanticParser`, `ParserCapabilities` |
 | Aggregation | `Aggregate`, `Aggregator`, `EvidenceAggregate`, `EvidenceAggregator`, `EvidenceEntry`, `EvidenceGroup`, `RoutingAggregator` |
 | Compression | `CompressionMetrics`, `measure_compression` |
+| Language models | `LanguageModel`, `ChatMessage` |
 | Errors | `ParseFabricError`, `ParseError`, `ConfigurationError`, `CapabilityError`, `IntegrityError`, `SerializationError`, `RegistryError`, `DuplicateParserError`, `SummaryValidationError`, `ParseIssue` |
 | Constants | `MAX_JSON_DEPTH`, `__version__` |
 

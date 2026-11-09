@@ -43,15 +43,11 @@ async def test_scheduling_budgets_reject_invalid_values(budget: Any) -> None:
     parser = DeterministicParser([], name="empty")
 
     async def map_items() -> None:
-        async for _ in AsyncExecutionBackend().map(
-            lambda item: item, [1, 2], max_in_flight=budget
-        ):
+        async for _ in AsyncExecutionBackend().map(lambda item: item, [1, 2], max_in_flight=budget):
             pytest.fail("invalid scheduling budget submitted work")
 
     async def parse_items() -> None:
-        async for _ in ParseEngine().parse_async_iter(
-            parser, ["x"], max_concurrency=budget
-        ):
+        async for _ in ParseEngine().parse_async_iter(parser, ["x"], max_concurrency=budget):
             pytest.fail("invalid scheduling budget submitted parsing")
 
     with pytest.raises(ValueError):
@@ -95,9 +91,7 @@ def test_group_rejects_invalid_fields(field: str) -> None:
         EvidenceGroup(**values)
 
 
-@pytest.mark.parametrize(
-    "field", ["source_id", "parser_name", "parser_version", "groups"]
-)
+@pytest.mark.parametrize("field", ["source_id", "parser_name", "parser_version", "groups"])
 async def test_document_rejects_invalid_fields(field: str) -> None:
     (document,) = await EvidenceAggregator().aggregate([ParsedEvent("x")])
     changes: dict[str, Any] = {field: 1}
@@ -120,8 +114,10 @@ async def test_document_rejects_partial_retention() -> None:
 
 async def test_aggregator_rejects_invalid_events_messages_and_versions() -> None:
     with pytest.raises(TypeError, match="ParsedEvent"):
-        await EvidenceAggregator().aggregate([object()])  # type: ignore[list-item]
-    invalid = EvidenceAggregator(message=lambda _: object())  # type: ignore[arg-type,return-value]
+        # pyrefly: ignore[bad-argument-type]
+        await EvidenceAggregator().aggregate([object()])
+    # pyrefly: ignore[bad-argument-type]
+    invalid = EvidenceAggregator(message=lambda _: object())
     with pytest.raises(TypeError, match="JSON-compatible"):
         await invalid.aggregate([ParsedEvent("x")])
     first = ParsedEvent("x", evidence=Evidence(parser_name="p", parser_version="1"))
@@ -129,9 +125,7 @@ async def test_aggregator_rejects_invalid_events_messages_and_versions() -> None
     with pytest.raises(ValueError, match="different versions"):
         await EvidenceAggregator().aggregate([first, changed])
     unnamed = replace(first, evidence=replace(first.evidence, parser_name=None))
-    changed_unnamed = replace(
-        changed, evidence=replace(changed.evidence, parser_name=None)
-    )
+    changed_unnamed = replace(changed, evidence=replace(changed.evidence, parser_name=None))
     with pytest.raises(ValueError, match="share a version"):
         await EvidenceAggregator().aggregate([unnamed, changed_unnamed])
 
@@ -151,7 +145,8 @@ async def test_materialize_rejects_wrong_type_source_sequence_and_candidates() -
     with pytest.raises(IntegrityError, match="positions"):
         await aggregator.materialize([forged])
     with pytest.raises(IntegrityError, match="cannot be aggregated"):
-        await aggregator.materialize([document], [object()])  # type: ignore[list-item]
+        # pyrefly: ignore[bad-argument-type]
+        await aggregator.materialize([document], [object()])
     compact = await EvidenceAggregator(reproducible=True).aggregate([ParsedEvent("x")])
     with pytest.raises(IntegrityError, match="re-parsing"):
         await EvidenceAggregator(reproducible=True).materialize(compact)
@@ -224,23 +219,20 @@ async def test_statistical_async_paths_and_partial_type_rejection() -> None:
 
 def test_count_and_base_aggregate_validation() -> None:
     with pytest.raises(ValueError):
-        Aggregate(
-            "x", 1, datetime(2026, 1, 2, tzinfo=UTC), datetime(2026, 1, 1, tzinfo=UTC)
-        )
+        Aggregate("x", 1, datetime(2026, 1, 2, tzinfo=UTC), datetime(2026, 1, 1, tzinfo=UTC))
     with pytest.raises(ValueError):
         CountAggregate.from_dict([])
     with pytest.raises(ValueError, match="missing key_attributes"):
         CountAggregate.from_dict({"event_type": "x", "count": 1})
     with pytest.raises(ValueError, match="unknown fields extra"):
-        CountAggregate.from_dict(
-            CountAggregate("x", 1, None, None, {}).to_dict() | {"extra": 1}
-        )
+        CountAggregate.from_dict(CountAggregate("x", 1, None, None, {}).to_dict() | {"extra": 1})
     with pytest.raises(ValueError, match="ISO 8601"):
         Aggregate.from_dict({"event_type": "x", "count": 1, "first_seen": None})
     with pytest.raises(ValueError):
         CountAggregate("x", 1, None, None, {"value": float("inf")})
     with pytest.raises(TypeError):
-        CountAggregate("x", 1, None, None, {}).merge(Aggregate("x", 1, None, None))  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        CountAggregate("x", 1, None, None, {}).merge(Aggregate("x", 1, None, None))
     assert Aggregate.from_dict(Aggregate("x", 1, None, None).to_dict()) == Aggregate(
         "x", 1, None, None
     )
@@ -264,11 +256,14 @@ async def test_routed_async_materialization_merge_and_properties() -> None:
     assert await routing.materialize(aggregates, [event]) == (event,)
     assert await routing.merge(_partials(aggregates[0])) == aggregates
     with pytest.raises(TypeError):
-        RoutingAggregator(object())  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        RoutingAggregator(object())
     with pytest.raises(TypeError):
-        RoutingAggregator(default, {"bad": object()})  # type: ignore[dict-item]
+        # pyrefly: ignore[bad-assignment]
+        RoutingAggregator(default, {"bad": object()})
     with pytest.raises(TypeError):
-        await routing.aggregate([object()])  # type: ignore[list-item]
+        # pyrefly: ignore[bad-argument-type]
+        await routing.aggregate([object()])
 
 
 async def test_routed_retained_materialization_requires_unambiguous_positions() -> None:
@@ -284,8 +279,7 @@ async def test_routed_retained_materialization_requires_unambiguous_positions() 
         await EvidenceAggregator().aggregate(events)
     ) == tuple(events)
     unpositioned = [
-        replace(event, evidence=replace(event.evidence, line_number=None))
-        for event in events
+        replace(event, evidence=replace(event.evidence, line_number=None)) for event in events
     ]
     with pytest.raises(IntegrityError, match="line numbers"):
         await routing.materialize(await routing.aggregate(unpositioned))

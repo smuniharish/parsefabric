@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-from collections.abc import Coroutine
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
 
 
 def run_sync[T](coroutine: Coroutine[Any, Any, T]) -> T:

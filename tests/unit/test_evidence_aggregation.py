@@ -20,13 +20,13 @@ from parsefabric import (
     SemanticParser,
 )
 from parsefabric.aggregation import (
-    FORMAT,
     Aggregate,
     CountAggregate,
     EventAggregator,
     EvidenceAggregate,
 )
-from parsefabric.builtins import JSONParser, MixedContentParser, TimestampedLogParser
+from parsefabric.builtins import MixedContentParser, TimestampedLogParser
+from parsefabric.codecs import EvidenceCodec
 from parsefabric.engine import ParseEngine
 from parsefabric.errors import CapabilityError, SerializationError
 from tests.support.grouped import rows
@@ -44,8 +44,10 @@ async def _run(
     parser: object, source: str, source_id: str = "ops.log"
 ) -> tuple[ParseResult, tuple[EvidenceAggregate, ...]]:
     engine = ParseEngine()
-    result = await engine.parse(parser, source, ParseContext(source_id=source_id))  # type: ignore[arg-type]
-    aggregates = await engine.aggregate(parser, result.events)  # type: ignore[arg-type]
+    # pyrefly: ignore[bad-argument-type]
+    result = await engine.parse(parser, source, ParseContext(source_id=source_id))
+    # pyrefly: ignore[bad-argument-type]
+    aggregates = await engine.aggregate(parser, result.events)
     return result, aggregates
 
 
@@ -69,7 +71,7 @@ def _event(line: int, message: str, start: int | None = None) -> ParsedEvent:
     )
 
 
-async def test_groups_consecutive_runs_by_severity() -> None:
+async def test_groups_identical_messages_by_severity() -> None:
     result, aggregates = await _run(TimestampedLogParser(), LOG)
     document = _evidence(aggregates[0])
     assert len(aggregates) == 1
@@ -80,12 +82,11 @@ async def test_groups_consecutive_runs_by_severity() -> None:
     assert not hasattr(document, "dependent")
     assert rows(document) == [
         ("INFO", "service started", "1", 1),
-        ("ERROR", "db timeout", "2,3,4", 3),
-        ("ERROR", "db timeout", "6", 1),
+        ("ERROR", "db timeout", "2,3,4,6", 4),
         ("WARN", "retrying", "5", 1),
     ]
-    # A three-line run is one entry: the message is stored once.
-    assert TimestampedLogParser().serialize(aggregates).count("db timeout") == 2
+    # Every occurrence of a message is one entry: the message is stored once.
+    assert (await ParseEngine().serialize(aggregates)).count("db timeout") == 1
     assert not document.retains_events
 
     events = await ParseEngine().materialize(TimestampedLogParser(), LOG, aggregates)
@@ -95,24 +96,22 @@ async def test_groups_consecutive_runs_by_severity() -> None:
 async def test_wire_format_has_no_dependency_mode() -> None:
     parser = TimestampedLogParser()
     _, aggregates = await _run(parser, LOG)
-    (_data,) = json.loads(parser.serialize(aggregates))["aggregates"]
+    (_data,) = json.loads(await ParseEngine().serialize(aggregates))["aggregates"]
     (error,) = [group for group in aggregates[0].groups if group.severity == "ERROR"]
     assert isinstance(error, EvidenceGroup)
     assert error.pattern == "timestamped-log"
-    assert [entry.positions for entry in error.evidence] == [(2, 3, 4), (6,)]
+    assert [entry.positions for entry in error.evidence] == [(2, 3, 4, 6)]
 
 
-async def test_runs_break_on_gaps_between_filtered_events() -> None:
+async def test_recurrences_after_gaps_share_one_entry() -> None:
     aggregator = EvidenceAggregator(reproducible=True)
-    by_offset = [_event(1, "x", 0), _event(2, "x", 11), _event(4, "x", 40)]
-    (document,) = await aggregator.aggregate(by_offset)
+    events = [_event(1, "x", 0), _event(2, "y", 11), _event(4, "x", 40), _event(5, "x")]
+    (document,) = await aggregator.aggregate(events)
     (group,) = document.groups
-    assert [entry.positions for entry in group.evidence] == [(1, 2), (4,)]
-
-    by_line = [_event(1, "x"), _event(2, "x"), _event(5, "x")]
-    (document,) = await aggregator.aggregate(by_line)
-    (group,) = document.groups
-    assert [entry.occurrences for entry in group.evidence] == [2, 1]
+    assert [(entry.message, entry.positions) for entry in group.evidence] == [
+        ("x", (1, 4, 5)),
+        ("y", (2,)),
+    ]
 
 
 async def test_materialize_detects_changed_source_with_same_structure() -> None:
@@ -136,9 +135,7 @@ async def test_materialize_detects_wrong_context_and_tampering() -> None:
     )
 
     with pytest.raises(IntegrityError):
-        await engine.materialize(
-            parser, LOG, (document,), ParseContext(source_id="other.log")
-        )
+        await engine.materialize(parser, LOG, (document,), ParseContext(source_id="other.log"))
     with pytest.raises(IntegrityError):
         await engine.materialize(
             parser,
@@ -205,10 +202,10 @@ def _malformed(data: dict[str, Any], change: str) -> None:
 async def test_decoding_rejects_malformed_aggregates(change: str) -> None:
     parser = TimestampedLogParser()
     _, aggregates = await _run(parser, "2026-10-01T08:00:00+00:00 INFO ready\n")
-    document = json.loads(parser.serialize(aggregates))
+    document = json.loads(await ParseEngine().serialize(aggregates))
     _malformed(document["aggregates"][0], change)
     with pytest.raises(SerializationError):
-        parser.deserialize(json.dumps(document))
+        await ParseEngine().deserialize(json.dumps(document))
 
 
 @pytest.mark.parametrize(
@@ -220,9 +217,9 @@ async def test_decoding_rejects_malformed_aggregates(change: str) -> None:
         '{"format": "parsefabric.aggregates/1"}',
     ],
 )
-def test_decoding_rejects_unknown_envelopes(text: str) -> None:
+async def test_decoding_rejects_unknown_envelopes(text: str) -> None:
     with pytest.raises(SerializationError):
-        TimestampedLogParser().deserialize(text)
+        await ParseEngine().deserialize(text)
 
 
 async def test_zero_events_materialize_to_nothing() -> None:
@@ -238,9 +235,7 @@ class _Intent(SemanticParser):
     def __init__(self) -> None:
         super().__init__(name="intent")
 
-    async def parse(
-        self, source: object, context: ParseContext | None = None
-    ) -> ParseResult:
+    async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
         assert isinstance(source, str)
         events = tuple(
             self._with_parser_evidence(
@@ -276,17 +271,16 @@ async def test_non_reproducible_parsers_retain_events() -> None:
     assert not aggregator.reproducible
     assert not aggregator.requires_source
     entries = [entry for group in document.groups for entry in group.evidence]
-    assert [entry.message for entry in entries] == ["question", "statement", "question"]
+    assert [entry.message for entry in entries] == ["question", "statement"]
+    assert [entry.sequence for entry in entries] == [(0, 2), (1,)]
     assert sum(len(entry.events) for entry in entries) == 3
     restored = await ParseEngine().materialize(parser, "ignored", (document,))
     assert restored == result.events
 
     # Retained events survive the canonical encoding.
-    (decoded,) = parser.deserialize(parser.serialize((document,)))
+    (decoded,) = await ParseEngine().deserialize(await ParseEngine().serialize((document,)))
     assert decoded == document
-    assert await ParseEngine().materialize(parser, "ignored", (decoded,)) == (
-        result.events
-    )
+    assert await ParseEngine().materialize(parser, "ignored", (decoded,)) == (result.events)
 
     (group,) = document.groups
     first = group.evidence[0]
@@ -327,29 +321,32 @@ async def test_mixed_content_splits_aggregates_and_dispatches_messages() -> None
 async def test_custom_message_function() -> None:
     aggregator = EvidenceAggregator(
         reproducible=True,
-        message=lambda event: event.attributes["message"].upper(),  # type: ignore[union-attr]
+        # pyrefly: ignore[missing-attribute]
+        message=lambda event: event.attributes["message"].upper(),
     )
     (document,) = await aggregator.aggregate([_event(1, "a"), _event(2, "a")])
     assert document.groups[0].evidence == (EvidenceEntry("A", 2, (1, 2)),)
     with pytest.raises(TypeError):
-        EvidenceAggregator(message="nope")  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        EvidenceAggregator(message="nope")
     with pytest.raises(TypeError):
-        EvidenceAggregator(reproducible=1)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        EvidenceAggregator(reproducible=1)
 
 
 async def test_aggregates_round_trip_through_the_parser_wire_format() -> None:
     parser = TimestampedLogParser()
     result, aggregates = await _run(parser, LOG)
-    text = parser.serialize(aggregates)
-    assert json.loads(text)["format"] == FORMAT == "parsefabric.aggregates/1"
+    text = await ParseEngine().serialize(aggregates)
+    assert json.loads(text)["format"] == EvidenceCodec.FORMAT == "parsefabric.aggregates/1"
     assert "kind" not in json.loads(text)["aggregates"][0]
     assert " " not in text.replace("db timeout", "").replace("service started", "")
-    restored = parser.deserialize(text)
+    restored = await ParseEngine().deserialize(text)
     assert restored == aggregates
-    assert parser.deserialize(text.encode()) == aggregates
-    assert parser.deserialize(parser.serialize(aggregates, indent=2)) == aggregates
-    # The format is the same for every parser, so any parser decodes it.
-    assert JSONParser().deserialize(text) == aggregates
+    assert await ParseEngine().deserialize(text.encode()) == aggregates
+    engine = ParseEngine()
+    assert await engine.deserialize(await engine.serialize(aggregates, indent=2)) == aggregates
+    assert EvidenceCodec().format == EvidenceCodec.FORMAT
     assert await ParseEngine().materialize(parser, LOG, restored) == result.events
 
 
@@ -357,9 +354,9 @@ async def test_serialization_is_closed_to_parser_evidence() -> None:
     events = (await TimestampedLogParser().parse(LOG)).events
     counts = await EventAggregator(group_by=("message",)).aggregate(events)
     assert all(isinstance(item, CountAggregate) for item in counts)
-    with pytest.raises(TypeError, match="only EvidenceAggregate"):
-        TimestampedLogParser().serialize(counts)  # type: ignore[arg-type]
-    # Lossy counts keep their own plain JSON form, outside the parser format.
+    with pytest.raises(TypeError, match="EvidenceCodec encodes EvidenceAggregate"):
+        await ParseEngine().serialize(counts)
+    # Lossy counts keep their own plain JSON form, outside the evidence format.
     assert tuple(CountAggregate.from_dict(item.to_dict()) for item in counts) == counts
     assert not hasattr(Aggregate, "kind")
 

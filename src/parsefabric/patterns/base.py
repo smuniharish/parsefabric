@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from parsefabric.models import ParsedEvent
-from parsefabric.patterns.match import PatternMatch
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from parsefabric.patterns.match import PatternMatch
 
 
 class Pattern(ABC):
@@ -41,9 +44,7 @@ class Pattern(ABC):
             raise ValueError("pattern name must be a non-empty string")
         if type(priority) is not int:
             raise ValueError("pattern priority must be an integer")
-        if event_type is not None and (
-            not isinstance(event_type, str) or not event_type
-        ):
+        if event_type is not None and (not isinstance(event_type, str) or not event_type):
             raise ValueError("pattern event_type must be a non-empty string")
         self._name = name
         self._priority = priority

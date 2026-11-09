@@ -1,0 +1,47 @@
+{
+  "skill_name": "parsefabric",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "ingest.py in files/checkout_ingest parses checkout.log with a hand-written regex and stores a JSON list of failures. It misses the Python traceback and loses line numbers. Rewrite it with parsefabric so every failure keeps its line, the stored data is compact, and we can prove it rebuilds the original events.",
+      "expected_output": "ingest becomes async, parses with a parser that understands both log lines and tracebacks (MixedContentParser routing or ApplicationLogParser plus PythonTracebackParser), aggregates the events of the document, stores engine.serialize output, and a test shows materialize rebuilds the parsed events exactly.",
+      "files": [
+        "files/checkout_ingest/ingest.py",
+        "files/checkout_ingest/checkout.log"
+      ],
+      "assertions": [
+        "Parsing goes through ParseEngine or a parsefabric parser's async parse, with a ParseContext carrying a source_id",
+        "The traceback in checkout.log produces an event instead of being dropped",
+        "Stored data is the output of engine.serialize on aggregates of one document",
+        "A test calls materialize with the same source, context and parser and asserts the events are equal",
+        "No line numbers or byte offsets are recomputed by hand; evidence fields are used",
+        "Every parsefabric coroutine is awaited"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our nightly job parses 4 GB application logs with parsefabric in one call and runs out of memory. Split the work across 8 processes without changing which events are produced or their line numbers.",
+      "expected_output": "Uses LinePartitioner to split the document, parses partitions on a ProcessExecutionBackend with module-level picklable functions, passes source_offset and re-bases line numbers with partition.start_line, and aggregates all events of the document together in source order.",
+      "files": [],
+      "assertions": [
+        "LinePartitioner (or partitioner.partition) splits the input, and the parser is line-partitionable",
+        "ProcessExecutionBackend runs a module-level function, inside an if __name__ == '__main__' guard",
+        "Each partition is parsed with ParseContext(source_offset=partition.start_offset)",
+        "Line numbers are re-based with partition.start_line",
+        "Per-partition aggregates of the same document are not merged with merge_aggregates"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "materialize keeps raising IntegrityError on aggregates we stored last week. Nothing in the logs changed. Why, and how do we fix it without losing data?",
+      "expected_output": "Explains that materialize re-parses the source and verifies it against the stored aggregates, so a different parser version, a changed context (source_id, offsets) or an altered source byte (for example a newline normalization) raises IntegrityError; recommends storing source, context and parser version together and restoring the original ones, never catching the error.",
+      "files": [],
+      "assertions": [
+        "Names a parser version change as a likely cause",
+        "Names a different ParseContext or a modified source (for example line endings) as causes",
+        "Recommends materializing with the exact source, context and parser version",
+        "Does not suggest catching IntegrityError to continue or editing the stored document"
+      ]
+    }
+  ]
+}

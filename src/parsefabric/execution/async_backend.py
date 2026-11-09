@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, overload, override
+from typing import TYPE_CHECKING, Any, overload, override
 
 from parsefabric.execution.base import ExecutionBackend
-from parsefabric.observability import LifecycleEvent
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Coroutine
 
 
 class AsyncExecutionBackend(ExecutionBackend):
@@ -41,27 +42,20 @@ class AsyncExecutionBackend(ExecutionBackend):
     ) -> R: ...
 
     @override
-    async def run(
-        self, function: Callable[..., Any], /, *args: object, **kwargs: object
-    ) -> Any:
-        self._sink.emit(LifecycleEvent("ExecutionSubmitted"))
-        self._sink.emit(LifecycleEvent("ExecutionStarted"))
+    async def run(self, function: Callable[..., Any], /, *args: object, **kwargs: object) -> Any:
+        await self.emit("ExecutionSubmitted")
+        await self.emit("ExecutionStarted")
         try:
             result = function(*args, **kwargs)
             if inspect.isawaitable(result):
                 result = await result
         except asyncio.CancelledError:
-            self._sink.emit(LifecycleEvent("ExecutionCancelled"))
+            await self.emit("ExecutionCancelled")
             raise
         except Exception as error:
-            self._sink.emit(
-                LifecycleEvent(
-                    "ExecutionFailed",
-                    attributes={"error_type": type(error).__name__},
-                )
-            )
+            await self.emit("ExecutionFailed", error_type=type(error).__name__)
             raise
-        self._sink.emit(LifecycleEvent("ExecutionCompleted"))
+        await self.emit("ExecutionCompleted")
         return result
 
     @override

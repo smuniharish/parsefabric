@@ -63,7 +63,16 @@ operations:
 Parsers are independent of backends: the same parser runs on all of them and
 produces identical results. To run work somewhere else, such as a task queue,
 subclass `ExecutionBackend` and implement `run` and `shutdown`; `map` is
-built on `run`.
+built on `run`. See [Execution backends](../extending/execution-backends.md). To use any `concurrent.futures.Executor`, such as a custom or
+distributed pool, pass it to `ExecutorBackend`, which the thread and process
+backends are built on.
+
+When a thread or process worker receives an asynchronous callable, it runs it
+on an event loop that the worker creates once and reuses for later calls, so
+clients bound to a loop stay usable across calls. `shutdown` cancels queued
+work, waits for running work and closes those loops. Pass
+`shutdown_timeout=` to bound the wait: `shutdown` then raises `TimeoutError`
+while the pool finishes in the background.
 
 ```python
 --8<--
@@ -80,7 +89,8 @@ Output:
 !!! warning "Cancellation stops waiting, not running work"
 
     Cancelling a thread or process call stops awaiting it, but Python cannot
-    interrupt work that has already started; shutdown waits for it to finish.
+    interrupt work that has already started; shutdown waits for it to finish,
+    up to `shutdown_timeout` seconds when set.
     If a process worker dies, the pool raises `BrokenProcessPool` and refuses
     further work: shut the backend down and create a new one. Backends never
     retry work on their own. See [Failure handling](../operations/failure-handling.md).
@@ -116,4 +126,4 @@ document whole. Records that contain a line boundary, or that exceed
 `max_bytes` on their own, are rejected.
 
 To run partitions on Celery, Apache Spark or Apache Flink, see
-[Distributed runtimes](distributed-runtimes.md).
+[Distributed runtimes](../integrations/distributed-runtimes.md).

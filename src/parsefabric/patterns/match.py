@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from parsefabric.models import Attributes
+if TYPE_CHECKING:
+    from parsefabric.models import Attributes
 
 
 @dataclass(frozen=True, slots=True)

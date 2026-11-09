@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from functools import cached_property
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from parsefabric.aggregation.evidence import EvidenceAggregate
+if TYPE_CHECKING:
+    from parsefabric.aggregation.evidence import EvidenceAggregate
 
 
 class Claim(BaseModel):
@@ -43,6 +46,11 @@ class Fact:
     positions: tuple[int | None, ...]
     timestamps: tuple[tuple[int | None, str], ...]
     timestamps_known: bool
+
+    @cached_property
+    def numbers(self) -> frozenset[str]:
+        """Numeric values in the message, which claims may repeat."""
+        return frozenset(_NUMBER.findall(json.dumps(self.message)))
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -126,6 +134,9 @@ def facts_for(aggregates: tuple[EvidenceAggregate, ...]) -> tuple[Fact, ...]:
     return tuple(facts)
 
 
+REPORTED_SEVERITIES = frozenset(("ERROR", "WARN", "WARNING", "CRITICAL", "FATAL"))
+"""Severities, compared case-insensitively, that every report must cover."""
+
 _CLOCK = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
 _CITATION = re.compile(r"\[(?:L?\d|lines?\b)", re.IGNORECASE)
 _TIME_ASSERTION = re.compile(r"\b(?:untimestamped|timestamped)\b", re.IGNORECASE)
@@ -141,9 +152,7 @@ def check_claims(text: str, facts: tuple[Fact, ...]) -> tuple[Claims, list[str]]
     try:
         claims = Claims.model_validate_json(text)
     except ValidationError:
-        return Claims(claims=[]), [
-            "Return valid JSON matching the supplied Claims schema."
-        ]
+        return Claims(claims=[]), ["Return valid JSON matching the supplied Claims schema."]
     by_id = {fact.id: fact for fact in facts}
     used: set[str] = set()
     issues: list[str] = []
@@ -177,24 +186,15 @@ def check_claims(text: str, facts: tuple[Fact, ...]) -> tuple[Claims, list[str]]
             or _TIME_ASSERTION.search(claim.text)
         ):
             issues.append(
-                f"Claim {number}: timestamps and citations belong to the renderer, "
-                "not claim text."
+                f"Claim {number}: timestamps and citations belong to the renderer, not claim text."
             )
-        supplied_numbers = {
-            value
-            for fact in support
-            for value in _NUMBER.findall(json.dumps(fact.message))
-        }
+        supplied_numbers = frozenset[str]().union(*(fact.numbers for fact in support))
         if set(_NUMBER.findall(claim.text)) - supplied_numbers:
-            issues.append(
-                f"Claim {number}: numeric values are absent from cited evidence."
-            )
+            issues.append(f"Claim {number}: numeric values are absent from cited evidence.")
     required = {
         fact.id
         for fact in facts
-        if (fact.severity or "").upper()
-        in {"ERROR", "WARN", "WARNING", "CRITICAL", "FATAL"}
-        and fact.event_type != "fence"
+        if (fact.severity or "").upper() in REPORTED_SEVERITIES and fact.event_type != "fence"
     }
     if required - used:
         issues.append("Include every error/warning finding with its exact total.")
@@ -245,17 +245,12 @@ def render_claims(
                     if position is None:
                         continue
                     occurrence = (
-                        f"- [source {source}, line {position}] Recorded evidence: "
-                        f"{message}."
+                        f"- [source {source}, line {position}] Recorded evidence: {message}."
                     )
                     recorded = timestamps_by_position.get(position, [])
                     if recorded:
-                        occurrence += (
-                            " Recorded timestamps: " + "; ".join(recorded) + "."
-                        )
-                    occurrences.append(
-                        (fact.source_id or "", position, len(rows), occurrence)
-                    )
+                        occurrence += " Recorded timestamps: " + "; ".join(recorded) + "."
+                    occurrences.append((fact.source_id or "", position, len(rows), occurrence))
             count_label = (
                 ("occurrence" if claim.occurrences == 1 else "occurrences")
                 if len(selected) == 1
@@ -267,8 +262,7 @@ def render_claims(
                 f"[{'; '.join(citations)}]."
             )
             messages = [
-                json.dumps(fact.message, ensure_ascii=False, allow_nan=False)
-                for fact in selected
+                json.dumps(fact.message, ensure_ascii=False, allow_nan=False) for fact in selected
             ]
             row += " Recorded evidence: " + "; ".join(messages) + "."
             if context:

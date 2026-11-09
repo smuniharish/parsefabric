@@ -54,7 +54,7 @@ never parsed content.
 `CodeDetector`, and `MixedContentParser` with code detection, download any
 missing tree-sitter grammars through `tree-sitter-language-pack` when they are
 created. In production, download grammars while building your image, run with
-a read-only cache, or disable detection with `code_languages=()`. See
+a read-only cache, or disable detection with `code_detector=None`. See
 [Installation](../getting-started/installation.md#code-detection-grammars).
 
 ## Language models

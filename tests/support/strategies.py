@@ -38,9 +38,7 @@ JSON_SCALARS = (
 )
 JSON_VALUES: st.SearchStrategy[JSONValue] = st.recursive(
     JSON_SCALARS,
-    lambda children: (
-        st.lists(children, max_size=4) | st.dictionaries(TEXT, children, max_size=4)
-    ),
+    lambda children: st.lists(children, max_size=4) | st.dictionaries(TEXT, children, max_size=4),
     max_leaves=16,
 )
 ATTRIBUTES = st.dictionaries(TEXT, JSON_VALUES, max_size=4)

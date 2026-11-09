@@ -8,14 +8,16 @@ them with ``pytest -m live``. The key is read from the environment only.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from parsefabric import ParseContext
 from parsefabric.errors import SummaryValidationError
 from parsefabric.summarization import EvidenceSummarizer
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 pytestmark = [
     pytest.mark.live,

@@ -1,11 +1,13 @@
 """The documentation stays runnable, linked and in sync with its sources."""
 
+import ast
 import contextlib
 import hashlib
 import io
 import json
 import re
 import struct
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -17,7 +19,9 @@ DIAGRAMS = ROOT / "diagrams"
 RENDERED = DOCS / "assets" / "diagrams"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 RENDER_HINT = "diagram sources changed; run: node scripts/render_diagrams.mjs"
-LINE_LIMIT = 88
+LINE_LIMIT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["ruff"][
+    "line-length"
+]
 
 MARKDOWN = sorted(
     {
@@ -36,9 +40,7 @@ _REPOSITORY = re.compile(
     r"^https://(?:github\.com/smuniharish/parsefabric/(?:blob|tree)/main"
     r"|raw\.githubusercontent\.com/smuniharish/parsefabric/main)/(?P<path>[^#?]+)"
 )
-_READ_THE_DOCS = re.compile(
-    r"^https://parsefabric\.readthedocs\.io/en/latest/(?P<page>[^#?]*)"
-)
+_READ_THE_DOCS = re.compile(r"^https://parsefabric\.readthedocs\.io/en/latest/(?P<page>[^#?]*)")
 _INTERNAL = re.compile(
     r"\bADRs?\b|architecture decision|[A-Za-z]:\\Users\\|/home/\w+/|\.ps1\b",
     re.IGNORECASE,
@@ -77,7 +79,9 @@ def _docs_page_exists(page: str) -> bool:
 def test_python_snippet_runs_and_prints_the_documented_output(
     snippet: Snippet, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    code = compile(snippet.code, f"{_relative(snippet.path)}:{snippet.line}", "exec")
+    # Fragments that are compiled but not run may await at the top level.
+    flags = 0 if snippet.run else ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
+    code = compile(snippet.code, f"{_relative(snippet.path)}:{snippet.line}", "exec", flags=flags)
     too_long = [line for line in snippet.code.splitlines() if len(line) > LINE_LIMIT]
     assert not too_long, f"lines longer than {LINE_LIMIT} characters: {too_long}"
     if not snippet.run:
@@ -122,9 +126,7 @@ def test_manifest_matches_sources_and_config() -> None:
     manifest = json.loads((RENDERED / "manifest.json").read_text(encoding="utf-8"))
 
     assert manifest["renderer"].startswith("@mermaid-js/mermaid-cli@")
-    assert manifest["config"] == _text_sha256(DIAGRAMS / "mermaid-config.json"), (
-        RENDER_HINT
-    )
+    assert manifest["config"] == _text_sha256(DIAGRAMS / "mermaid-config.json"), RENDER_HINT
     assert manifest["sources"] == {
         path.name: _text_sha256(path) for path in sorted(DIAGRAMS.glob("*.mmd"))
     }, RENDER_HINT
@@ -137,9 +139,7 @@ def test_every_source_has_exactly_one_rendered_png() -> None:
     assert {path.stem for path in RENDERED.glob("*.png")} == sources
 
 
-@pytest.mark.parametrize(
-    "path", sorted(RENDERED.glob("*.png")), ids=lambda path: path.name
-)
+@pytest.mark.parametrize("path", sorted(RENDERED.glob("*.png")), ids=lambda path: path.name)
 def test_rendered_diagram_is_a_legible_png(path: Path) -> None:
     data = path.read_bytes()
     width, height = struct.unpack(">II", data[16:24])
@@ -153,6 +153,4 @@ def test_rendered_diagram_is_a_legible_png(path: Path) -> None:
 def test_every_diagram_is_shown_in_the_documentation() -> None:
     pages = "\n".join(path.read_text(encoding="utf-8") for path in DOCS.rglob("*.md"))
 
-    assert {
-        path.name for path in RENDERED.glob("*.png") if path.name not in pages
-    } == set()
+    assert {path.name for path in RENDERED.glob("*.png") if path.name not in pages} == set()

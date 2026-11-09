@@ -1,31 +1,21 @@
-"""JSON document parser with explicit invalid-input results.
-
-Decoding uses msgspec: it is strict RFC 8259 (``NaN`` and out-of-range numbers
-such as ``1e400`` are invalid) and keeps integers of any size exact.
-"""
+"""JSON document parser with explicit invalid-input results."""
 
 from __future__ import annotations
 
 from typing import Any, override
 
-import msgspec
-
-from parsefabric._json import MAX_JSON_DEPTH, copy_json
+from parsefabric._json import copy_json
 from parsefabric.capabilities import ParserCapabilities
+from parsefabric.codecs import JSONCodec, StrictJSONCodec
 from parsefabric.errors import ParseError, ParseIssue
 from parsefabric.models import ParseContext, ParsedEvent, ParseResult
 from parsefabric.parser import Parser
+from parsefabric.parser._text import source_text
 
 
-def _decode(text: str) -> Any:
+async def _decode(codec: JSONCodec, text: str) -> Any:
     try:
-        value = msgspec.json.decode(text)
-    except RecursionError as error:
-        raise ParseError(
-            f"JSON document nests deeper than {MAX_JSON_DEPTH} levels"
-        ) from error
-    try:
-        return copy_json(value, "JSON document")
+        return copy_json(await codec.decode(text), "JSON document")
     except ValueError as error:
         raise ParseError(str(error)) from error
 
@@ -38,7 +28,26 @@ class JSONParser(Parser):
     JSON is not raised: the result holds an ``unparsed`` event with the text
     and a `ParseIssue`. Values nested deeper than
     `parsefabric.MAX_JSON_DEPTH` levels are invalid.
+
+    Args:
+        codec: Decoder for JSON text. Defaults to `StrictJSONCodec`, which
+            rejects ``NaN``/``Infinity``, out-of-range numbers such as
+            ``1e400`` and duplicate object keys, and keeps integers of any
+            size exact.
+
+    Raises:
+        TypeError: If ``codec`` is not a `JSONCodec`.
     """
+
+    def __init__(self, *, codec: JSONCodec | None = None) -> None:
+        if codec is not None and not isinstance(codec, JSONCodec):
+            raise TypeError("codec must be a JSONCodec")
+        self._codec = codec if codec is not None else StrictJSONCodec()
+
+    @property
+    def codec(self) -> JSONCodec:
+        """The decoder used for JSON text."""
+        return self._codec
 
     @property
     @override
@@ -55,7 +64,6 @@ class JSONParser(Parser):
     def capabilities(self) -> ParserCapabilities:
         return ParserCapabilities(
             deterministic=True,
-            incremental=True,
             parallel_safe=True,
             aggregatable=True,
         )
@@ -85,23 +93,17 @@ class JSONParser(Parser):
         end_offset = None
         line_number = None
         if isinstance(source, (str, bytes)):
-            text = (
-                source.decode("utf-8", errors="strict")
-                if isinstance(source, bytes)
-                else source
-            )
+            text = source_text(source, "JSON parser")
             try:
                 size = len(text.encode("utf-8"))
             except UnicodeEncodeError as error:
                 raise ParseError("JSON text must be valid Unicode") from error
-            start_offset = (
-                context.source_offset if context and context.source_offset else 0
-            )
+            start_offset = context.source_offset if context and context.source_offset else 0
             end_offset = start_offset + size
             line_number = 1
             try:
-                value = _decode(text)
-            except (msgspec.DecodeError, ParseError) as error:
+                value = await _decode(self._codec, text)
+            except ParseError as error:
                 event = self._with_parser_evidence(
                     ParsedEvent("unparsed", attributes={"text": text}),
                     context,

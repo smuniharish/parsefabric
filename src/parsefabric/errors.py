@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import traceback as _traceback
 from dataclasses import dataclass
 from typing import Self
 
@@ -57,7 +58,11 @@ class SummaryValidationError(ParseFabricError, ValueError):
     """An LLM summary did not pass bounded evidence review."""
 
 
-_ISSUE_FIELDS = frozenset(("error_type", "message", "source_id", "input_index"))
+_ISSUE_FIELDS = frozenset(("error_type", "message", "source_id", "input_index", "traceback"))
+
+
+def _unicode_safe(text: str) -> str:
+    return text.encode("utf-8", errors="backslashreplace").decode("utf-8", errors="strict")
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,12 +75,14 @@ class ParseIssue:
         source_id: Source document that failed, if known.
         input_index: Zero-based position of the failed input in a batch, if
             known.
+        traceback: Formatted traceback of the exception, if one was captured.
     """
 
     error_type: str
     message: str
     source_id: str | None = None
     input_index: int | None = None
+    traceback: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.error_type, str) or not self.error_type:
@@ -92,6 +99,10 @@ class ParseIssue:
             type(self.input_index) is not int or self.input_index < 0
         ):
             raise ValueError("issue input_index must be a non-negative integer")
+        if self.traceback is not None:
+            if not isinstance(self.traceback, str):
+                raise ValueError("issue traceback must be a string or None")
+            check_text(self.traceback, "issue traceback")
 
     @classmethod
     def from_exception(
@@ -101,7 +112,7 @@ class ParseIssue:
         source_id: str | None = None,
         input_index: int | None = None,
     ) -> Self:
-        """Summarize an exception by its type name and message.
+        """Summarize an exception by its type name, message and traceback.
 
         Args:
             error: The exception raised by a parser.
@@ -111,16 +122,12 @@ class ParseIssue:
         Returns:
             The issue. Characters that are not valid Unicode are escaped.
         """
-        message = (
-            str(error)
-            .encode("utf-8", errors="backslashreplace")
-            .decode("utf-8", errors="strict")
-        )
         return cls(
             error_type=type(error).__name__,
-            message=message,
+            message=_unicode_safe(str(error)),
             source_id=source_id,
             input_index=input_index,
+            traceback=_unicode_safe("".join(_traceback.format_exception(error))),
         )
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -130,6 +137,7 @@ class ParseIssue:
             "message": self.message,
             "source_id": self.source_id,
             "input_index": self.input_index,
+            "traceback": self.traceback,
         }
 
     @classmethod

@@ -19,8 +19,8 @@ sink, events are discarded.
 | `ParseCompleted` | `ParseEngine` | `event_count` |
 | `ParseFailed` | `ParseEngine` | `error_type` |
 | `ParseCancelled` | `ParseEngine` | |
-| `AggregationStarted`, `AggregationCompleted`, `AggregationFailed` | `ParseEngine.aggregate` and `merge_aggregates` | `aggregate_count` or `error_type` |
-| `MaterializeStarted`, `MaterializeCompleted`, `MaterializeFailed` | `ParseEngine.materialize` | `event_count` or `error_type` |
+| `AggregationStarted`, `AggregationCompleted`, `AggregationFailed`, `AggregationCancelled` | `ParseEngine.aggregate` and `merge_aggregates` | `aggregate_count` or `error_type` |
+| `MaterializeStarted`, `MaterializeCompleted`, `MaterializeFailed`, `MaterializeCancelled` | `ParseEngine.materialize` | `event_count` or `error_type` |
 | `ExecutionSubmitted`, `ExecutionStarted`, `ExecutionCompleted`, `ExecutionFailed`, `ExecutionCancelled` | Execution backends | `error_type` on failure |
 | `PartitionCreated` | `LinePartitioner` | `line_count`, `byte_count` |
 
@@ -32,6 +32,7 @@ Every event also records its time (`occurred_at`) and, where it applies, the
 | Sink | Records events as |
 | --- | --- |
 | `NullObservabilitySink` | Nothing; the default |
+| `CompositeObservabilitySink` | Whatever each of its child sinks records, in order |
 | `LoggingObservabilitySink` | structlog records named `parsefabric.lifecycle`, with the fields `parsefabric_event`, `parser_name`, `partition_id`, `event_attributes` and `occurred_at` |
 | `OpenTelemetryObservabilitySink` | OpenTelemetry spans and span events |
 
@@ -83,45 +84,5 @@ are flushed.
 
 ## Write a sink
 
-Subclass `ObservabilitySink` and implement `emit`, for example to feed
-metrics. Sinks run inline in parsing and execution code, so they must be fast
-and must not raise:
-
-```python
-import asyncio
-from collections import Counter
-
-from parsefabric import ParseEngine
-from parsefabric.builtins import ApplicationLogParser
-from parsefabric.observability import LifecycleEvent, ObservabilitySink
-
-
-class CountingSink(ObservabilitySink):
-    """Count lifecycle events by name."""
-
-    def __init__(self) -> None:
-        self.counts: Counter[str] = Counter()
-
-    def emit(self, event: LifecycleEvent) -> None:
-        self.counts[event.name] += 1
-
-
-async def main() -> None:
-    sink = CountingSink()
-    engine = ParseEngine(sink)
-    inputs = ["db timeout", "all good", b"\xff"]
-    async for _ in engine.parse_iter(
-        ApplicationLogParser(), inputs, continue_on_error=True
-    ):
-        pass
-    print(dict(sorted(sink.counts.items())))
-
-
-asyncio.run(main())
-```
-
-Output:
-
-```text
-{'ParseCompleted': 2, 'ParseFailed': 1, 'ParseStarted': 3, 'ParserSelected': 3, 'PatternMatched': 1}
-```
+To feed metrics, a message queue or another tracing system, subclass
+`ObservabilitySink`; see [Observability sinks](../extending/observability-sinks.md).

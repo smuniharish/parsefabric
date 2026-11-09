@@ -166,6 +166,26 @@ Requires `sqlglot`.
     --8<-- "examples/expected/mixed_custom_and_builtin.txt"
     ```
 
+### LangChain tools and LangGraph nodes
+
+A parser as a LangGraph node that feeds an error-counting node, and the same
+parser as a LangChain tool. Requires the `langchain` extra and `langgraph`.
+See [LangChain and LangGraph](integrations/langchain.md).
+
+=== "langchain_agent.py"
+
+    ```python
+    --8<--
+    examples/langchain_agent.py
+    --8<--
+    ```
+
+=== "Output"
+
+    ```text
+    --8<-- "examples/expected/langchain_agent.txt"
+    ```
+
 ## Running at scale
 
 ### Streaming
@@ -249,8 +269,8 @@ The summarizer only ever receives aggregates, never the raw input. See
 
 | Example | Shows |
 | --- | --- |
-| [`llm_summary.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/llm_summary.py) | Summarize aggregates with any LangChain chat model |
-| [`llm_summary_openai_compatible.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/llm_summary_openai_compatible.py) | The same with an OpenAI-compatible endpoint |
+| [`llm_summary_openai_compatible.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/llm_summary_openai_compatible.py) | Summarize aggregates with a `LanguageModel` on the official `openai` client and any OpenAI-compatible endpoint |
+| [`llm_summary.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/llm_summary.py) | The same with any LangChain chat model through `LangChainLanguageModel` |
 | [`semantic_llm.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/semantic_llm.py) | A `SemanticParser` that asks a model to interpret text, with a checked summary |
 
 ## Interactive playground
@@ -265,5 +285,5 @@ uv run streamlit run examples/streamlit_app.py --server.address 127.0.0.1
 
 ## Distributed runtimes
 
-The [integration examples](guide/distributed-runtimes.md) run the same
+The [integration examples](integrations/distributed-runtimes.md) run the same
 parsers on Celery, Apache Spark and Apache Flink with Docker Compose.

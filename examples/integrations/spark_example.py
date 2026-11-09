@@ -27,9 +27,7 @@ from parsefabric.serialization import loads_result
 async def main() -> None:
     session_type = load_spark_session()
     spark = (
-        session_type.builder.master("local[2]")
-        .appName("parsefabric-spark-example")
-        .getOrCreate()
+        session_type.builder.master("local[2]").appName("parsefabric-spark-example").getOrCreate()
     )
     try:
         spark.sparkContext.setLogLevel("ERROR")
@@ -39,15 +37,11 @@ async def main() -> None:
         entries = [
             (
                 "database timeout",
-                ParseContext(
-                    source_id="app-0.log", correlation_id="c-0", source_offset=20
-                ),
+                ParseContext(source_id="app-0.log", correlation_id="c-0", source_offset=20),
             ),
             (
                 "connection refused",
-                ParseContext(
-                    source_id="app-1.log", partition_id="p-1", source_offset=100
-                ),
+                ParseContext(source_id="app-1.log", partition_id="p-1", source_offset=100),
             ),
             (
                 "retrying request",
@@ -64,13 +58,10 @@ async def main() -> None:
         # One batch, two allowlisted parser types: application-log and mixed-content.
         actual = SparkBatchParser(spark).parse([*jobs, mixed_job_payload], partitions=2)
         expected = [
-            await ApplicationLogParser().parse(source, context)
-            for source, context in entries
+            await ApplicationLogParser().parse(source, context) for source, context in entries
         ] + [await mixed_parser().parse(MIXED_SOURCE, mixed_context)]
         if len(actual) != len(expected):
-            raise AssertionError(
-                f"Spark returned {len(actual)} records; expected {len(expected)}"
-            )
+            raise AssertionError(f"Spark returned {len(actual)} records; expected {len(expected)}")
         if actual != expected:
             raise AssertionError("Spark/local results or evidence differ")
         for result, (source, context) in zip(actual[:-1], entries, strict=True):
@@ -93,9 +84,7 @@ async def main() -> None:
         if loads_result(parse_job(json.dumps(jobs[0]))) != expected[0]:
             raise AssertionError("versioned JSON result differs from local parsing")
         if loads_result(parse_job(json.dumps(mixed_job_payload))) != expected[-1]:
-            raise AssertionError(
-                "versioned JSON mixed-content result differs from local parsing"
-            )
+            raise AssertionError("versioned JSON mixed-content result differs from local parsing")
         incompatible = dict(jobs[0], schema_version="2")
         try:
             SparkBatchParser(spark).parse([incompatible])

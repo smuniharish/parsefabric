@@ -4,27 +4,26 @@ import asyncio
 import json
 from collections import Counter
 from collections.abc import Iterable
+from contextlib import nullcontext
 from itertools import product
 
 import pytest
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from streamlit.testing.v1 import AppTest
 from ui_backend import (
     PARSERS,
     SAMPLES,
     PlaygroundOptions,
-    build_parser,
     run_parse,
     sample_text,
     verify_lossless,
 )
 
 from parsefabric.aggregation import EvidenceAggregate
-from parsefabric.builtins import JSONParser
 from parsefabric.compression import measure_compression
+from parsefabric.engine import ParseEngine
 from parsefabric.errors import ParseError
 from tests.support.paths import ROOT
-from tests.support.summary_model import SummaryModel
+from tests.support.summary_model import ScriptedModel, SummaryModel
 
 _EXAMPLES = ROOT / "examples"
 # Parsing the large sample can exceed Streamlit's 3-second default on slow runners.
@@ -32,9 +31,7 @@ _APP_TIMEOUT = 60
 
 
 def _app() -> AppTest:
-    return AppTest.from_file(
-        str(_EXAMPLES / "streamlit_app.py"), default_timeout=_APP_TIMEOUT
-    )
+    return AppTest.from_file(str(_EXAMPLES / "streamlit_app.py"), default_timeout=_APP_TIMEOUT)
 
 
 _COMBINATIONS = [
@@ -125,25 +122,18 @@ async def test_combination_outputs_against_sample_expectations(
             expected = dict(_MIXED_COUNTS[sample])
             if parser_name == PARSERS[1] and "sql_statement" in expected:
                 expected["code"] = expected.pop("sql_statement")
-            if (
-                sample == "Inventory (custom log format)"
-                and log_format == "ISO timestamp"
-            ):
+            if sample == "Inventory (custom log format)" and log_format == "ISO timestamp":
                 expected["other"] += expected.pop("log")
     elif parser_name == "Application logs":
         expected = _APPLICATION_COUNTS[sample]
     elif parser_name == "JSON":
-        expected = (
-            {"json_record": 1} if sample == "JSON incident record" else {"unparsed": 1}
-        )
+        expected = {"json_record": 1} if sample == "JSON incident record" else {"unparsed": 1}
     elif parser_name == "Custom SQL":
         expected = {"sql_statement": 25}
     else:
         expected = {"log": 11}
     assert dict(Counter(event.event_type for event in result.events)) == expected
-    assert len(result.errors) == int(
-        parser_name == "JSON" and sample != "JSON incident record"
-    )
+    assert len(result.errors) == int(parser_name == "JSON" and sample != "JSON incident record")
     if result.errors:
         assert result.events[0].attributes == {"text": source}
     data = source.encode("utf-8")
@@ -181,13 +171,13 @@ async def test_llm_opt_in_and_opt_out_keep_parsing_identical() -> None:
     assert enabled.events == plain.events
     assert enabled.errors == plain.errors
     assert summarized_aggregates == aggregates
-    with pytest.raises(ValueError, match="configured LangChain model"):
+    with pytest.raises(ValueError, match="configured language model"):
         await run_parse(source, PlaygroundOptions(PARSERS[0], llm_enabled=True))
     with pytest.raises(ParseError, match="no aggregates"):
         await run_parse(
             "plain note",
             PlaygroundOptions("Application logs", llm_enabled=True),
-            model=FakeListChatModel(responses=["must not be used"]),
+            model=ScriptedModel(["must not be used"]),
         )
 
 
@@ -228,8 +218,8 @@ def test_playground_shows_final_llm_summary(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(
         llm_summary_openai_compatible,
-        "build_model",
-        lambda: SummaryModel(label="Shop database timeout"),
+        "open_model",
+        lambda: nullcontext(SummaryModel(label="Shop database timeout")),
     )
     app = _app().run()
     app.toggle[0].set_value(True).run()
@@ -258,7 +248,7 @@ def test_playground_llm_configuration_failure_is_explicit(
     assert app.metric
     app.toggle[0].set_value(True).run()
     app.button[0].click().run()
-    assert "configured LangChain model" in app.exception[0].message
+    assert "configured language model" in app.exception[0].message
     assert not app.metric
     assert "latest" not in app.session_state
 
@@ -276,7 +266,7 @@ async def test_model_failure_is_not_returned_as_a_success(
         await run_parse(
             sample_text("Shop incident (mixed)"),
             PlaygroundOptions(PARSERS[0], llm_enabled=True),
-            model=FakeListChatModel(responses=["unused"]),
+            model=ScriptedModel(["unused"]),
         )
 
 
@@ -294,8 +284,11 @@ def _entries(aggregates) -> int:
 
 
 def _aggregate_output(app: AppTest) -> list[EvidenceAggregate]:
-    # One closed wire format: any parser deserializes any parser's output.
-    return list(JSONParser().deserialize(_json_output(app, "Complete aggregates JSON")))
+    aggregates = asyncio.run(
+        ParseEngine().deserialize(_json_output(app, "Complete aggregates JSON"))
+    )
+    assert all(isinstance(item, EvidenceAggregate) for item in aggregates)
+    return [item for item in aggregates if isinstance(item, EvidenceAggregate)]
 
 
 def _json_output(app: AppTest, label: str) -> str:
@@ -418,19 +411,15 @@ def test_all_sample_and_configuration_combinations_render_consistently(
     assert json.loads(_json_output(app, "Complete events JSON")) == [
         event.to_dict() for event in result.events
     ]
-    assert (
-        json.loads(_json_output(app, "Complete ParseResult JSON")) == result.to_dict()
-    )
+    assert json.loads(_json_output(app, "Complete ParseResult JSON")) == result.to_dict()
     assert result.llm_result is None
-    metrics = measure_compression(source, build_parser(options).serialize(aggregates))
+    metrics = asyncio.run(
+        measure_compression(source, asyncio.run(ParseEngine().serialize(aggregates)))
+    )
     assert [metric.value for metric in app.metric[3:]] == [
         f"{metrics.input_bytes:,} B",
         f"{metrics.output_bytes:,} B",
-        (
-            f"{metrics.reduction_percent:+.1f}%"
-            if metrics.reduction_percent is not None
-            else "N/A"
-        ),
+        (f"{metrics.reduction_percent:+.1f}%" if metrics.reduction_percent is not None else "N/A"),
         (
             f"{metrics.token_reduction_percent:+.1f}%"
             if metrics.token_reduction_percent is not None
@@ -479,9 +468,7 @@ async def test_playground_presets(
     result, aggregates = await run_parse(source, options)
     assert len(result.events) == events
     assert not result.errors
-    assert all(
-        event.evidence.source_id == "playground-fixture" for event in result.events
-    )
+    assert all(event.evidence.source_id == "playground-fixture" for event in result.events)
     if event_types is not None:
         assert {document.event_type for document in aggregates} == event_types
     assert all(document.source_id == "playground-fixture" for document in aggregates)
@@ -512,9 +499,7 @@ async def test_playground_mixed_configuration_and_bad_input() -> None:
 
 async def test_large_file_backed_input_is_not_truncated() -> None:
     source = sample_text("Large incident log")
-    result, aggregates = await run_parse(
-        source, PlaygroundOptions(parser_name=PARSERS[1])
-    )
+    result, aggregates = await run_parse(source, PlaygroundOptions(parser_name=PARSERS[1]))
     assert len(source.splitlines()) == len(result.events) == 1254
     assert sum(item.count for item in aggregates) == 1254
     assert not result.errors
@@ -530,7 +515,7 @@ async def test_json_parser_retains_incompatible_sample_as_one_original() -> None
     assert result.events[0].attributes == {"text": source}
     assert result.events[0].evidence.source_id == "mixed-source.txt"
     assert len(result.errors) == 1
-    assert result.errors[0].error_type == "DecodeError"
+    assert result.errors[0].error_type == "ParseError"
     assert len(aggregates) == 1
     assert aggregates[0].count == 1
 
@@ -607,9 +592,7 @@ def test_streamlit_app_renders_and_reacts_to_configuration(
     assert [(entry.message, entry.occurrences) for entry in group.evidence] == [
         ("api database timeout on node-01", 2)
     ]
-    assert [
-        event["attributes"]["message"] for event in json.loads(app.code[2].value)
-    ] == [
+    assert [event["attributes"]["message"] for event in json.loads(app.code[2].value)] == [
         "api database timeout on node-01",
         "api database timeout on node-01",
     ]

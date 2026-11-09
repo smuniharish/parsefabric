@@ -66,9 +66,7 @@ async def run(
         isinstance(value, bool) or not math.isfinite(value) or value <= 0
         for value in (duration, cycle_timeout, maximum_growth_mib)
     ):
-        raise ValueError(
-            "duration, cycle timeout, and growth must be finite and positive"
-        )
+        raise ValueError("duration, cycle timeout, and growth must be finite and positive")
     if any(type(value) is not int or value < 1 for value in (records, workers)):
         raise ValueError("records and workers must be positive integers")
     if isinstance(pause, bool) or not math.isfinite(pause) or pause < 0:
@@ -102,7 +100,7 @@ async def run(
             ThreadExecutionBackend(max_workers=workers) as threads,
             ProcessExecutionBackend(max_workers=workers) as processes,
         ):
-            while time.monotonic() - started < duration:
+            while state["cycles"] == 0 or time.monotonic() - started < duration:
                 async with asyncio.timeout(cycle_timeout):
                     for backend in (native_async, threads, processes):
                         result: JobResult = await backend.run(
@@ -120,13 +118,8 @@ async def run(
                 # Warm-up includes lazy executor/library initialization.
                 if state["cycles"] == 10:
                     baseline = current
-                if (
-                    baseline is not None
-                    and current - baseline > state["maximum_growth_bytes"]
-                ):
-                    raise AssertionError(
-                        "traced caller allocation growth exceeded limit"
-                    )
+                if baseline is not None and current - baseline > state["maximum_growth_bytes"]:
+                    raise AssertionError("traced caller allocation growth exceeded limit")
                 state["caller_current_bytes"], state["caller_peak_bytes"] = (
                     current,
                     peak,

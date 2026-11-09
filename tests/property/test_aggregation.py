@@ -17,14 +17,15 @@ from parsefabric.aggregation import (
     EvidenceAggregate,
     EvidenceAggregator,
     canonical_event,
-    codec,
 )
+from parsefabric.codecs import EvidenceCodec
 from parsefabric.models import ParsedEvent
 from tests.support.strategies import AWARE_DATETIMES, JSON_VALUES, document_events
 
 
 def _run[T](coroutine: object) -> T:
-    return asyncio.run(coroutine)  # type: ignore[arg-type]
+    # pyrefly: ignore[bad-argument-type]
+    return asyncio.run(coroutine)
 
 
 def _checksum(events: list[ParsedEvent]) -> str:
@@ -42,12 +43,8 @@ def test_aggregates_are_exact_lossless_summaries(
     aggregates: tuple[EvidenceAggregate, ...] = _run(aggregator.aggregate(events))
     by_identity: dict[tuple[str, str | None], list[ParsedEvent]] = {}
     for event in events:
-        by_identity.setdefault(
-            (event.event_type, event.evidence.parser_name), []
-        ).append(event)
-    assert [(item.event_type, item.parser_name) for item in aggregates] == list(
-        by_identity
-    )
+        by_identity.setdefault((event.event_type, event.evidence.parser_name), []).append(event)
+    assert [(item.event_type, item.parser_name) for item in aggregates] == list(by_identity)
     for aggregate in aggregates:
         members = by_identity[(aggregate.event_type, aggregate.parser_name)]
         assert aggregate.count == len(members)
@@ -71,9 +68,11 @@ def test_serialized_aggregates_materialize_the_original_events(
 ) -> None:
     aggregator = EvidenceAggregator(reproducible=reproducible)
     aggregates = _run(aggregator.aggregate(events))
-    decoded = list(codec.decode(codec.encode(aggregates)))
+    codec = EvidenceCodec()
+    decoded = list(_run(codec.decode(_run(codec.encode(aggregates)))))
     assert decoded == list(aggregates)
-    random.shuffle(decoded)  # type: ignore[attr-defined]
+    # pyrefly: ignore[missing-attribute]
+    random.shuffle(decoded)
     restored = _run(aggregator.materialize(decoded, events if reproducible else None))
     assert restored == tuple(events)
 
@@ -111,7 +110,8 @@ def test_count_merging_is_associative_commutative_and_matches_whole(
 ) -> None:
     aggregator = EventAggregator(group_by=("value",))
     events = [
-        ParsedEvent(kind, {"value": value}, timestamp=timestamp)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type, bad-assignment]
+        ParsedEvent(kind, {"value": value}, timestamp=timestamp)
         for kind, value, timestamp in rows
     ]
     cut_a, cut_b = sorted((first % (len(events) + 1), second % (len(events) + 1)))

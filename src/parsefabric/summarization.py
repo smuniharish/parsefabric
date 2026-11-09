@@ -16,22 +16,15 @@ free-form synthesis call that could introduce new facts.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
-import operator
-from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Annotated, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-from langchain_core.language_models import BaseLanguageModel
-from langchain_core.messages import SystemMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import Runnable, RunnableConfig
-from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send
 from pydantic import ValidationError
 
 from parsefabric._summary_review import (
+    REPORTED_SEVERITIES,
     Claims,
     Critique,
     Fact,
@@ -39,9 +32,15 @@ from parsefabric._summary_review import (
     facts_for,
     render_claims,
 )
+from parsefabric._validation import validated_timeout
 from parsefabric.aggregation.evidence import EvidenceAggregate
 from parsefabric.errors import SummaryValidationError
-from parsefabric.models import ParseResult
+from parsefabric.llm import ChatMessage, LanguageModel
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from parsefabric.models import ParseResult
 
 __all__ = [
     "DEFAULT_MAX_AGGREGATES",
@@ -188,7 +187,7 @@ class EvidenceSummary:
     Attributes:
         text: The rendered report.
         aggregates: Number of aggregates summarized.
-        batches: Number of batches reviewed in parallel.
+        batches: Number of batches reviewed concurrently.
         calls: Number of model calls made.
     """
 
@@ -203,9 +202,7 @@ class _SourceScope(TypedDict):
     severity_occurrences: dict[str, int]
 
 
-def _render_report(
-    documents: list[tuple[Claims, tuple[Fact, ...]]], scope: _SourceScope
-) -> str:
+def _render_report(documents: list[tuple[Claims, tuple[Fact, ...]]], scope: _SourceScope) -> str:
     body = render_claims(documents)
     if not body:
         return ""
@@ -213,45 +210,18 @@ def _render_report(
     header = (
         "Recorded severity inventory (supplied evidence only): "
         + "; ".join(
-            f"{json.dumps(severity)}: {count}"
-            for severity, count in sorted(inventory.items())
+            f"{json.dumps(severity)}: {count}" for severity, count in sorted(inventory.items())
         )
         + "."
     )
     if not any(
-        inventory.get(severity, 0)
-        for severity in ("ERROR", "WARN", "WARNING", "CRITICAL", "FATAL")
+        count and severity.upper() in REPORTED_SEVERITIES for severity, count in inventory.items()
     ):
         header += " No severity-labeled errors or warnings were recorded."
     return f"{header}\n\n{body}"
 
 
-class _State(TypedDict, total=False):
-    batches: list[tuple[Fact, ...]]
-    partials: Annotated[list[tuple[int, Claims, tuple[Fact, ...]]], operator.add]
-    calls: Annotated[int, operator.add]
-    summary: str
-    initial_draft: str | None
-    source_scope: _SourceScope
-    limiter: asyncio.Semaphore | None
-
-
-class _Job(TypedDict):
-    index: int
-    facts: tuple[Fact, ...]
-    initial_draft: str | None
-    source_scope: _SourceScope
-    limiter: asyncio.Semaphore | None
-
-
-class _ReviewState(TypedDict, total=False):
-    facts: tuple[Fact, ...]
-    draft: str | None
-    claims: Claims
-    issues: list[str]
-    attempt: int
-    calls: int
-    source_scope: _SourceScope
+_CRITIC_ATTEMPTS = 3
 
 
 def _chunks[T](items: Sequence[T], size: int) -> list[Sequence[T]]:
@@ -268,61 +238,59 @@ class EvidenceSummarizer:
     """Summarize evidence aggregates with a language model, checking every claim.
 
     The model never sees the raw input, only facts derived from aggregates.
-    Aggregates are split into batches that are reviewed in parallel: the
+    Aggregates are split into batches that are reviewed concurrently: the
     model drafts structured claims that cite fact identifiers, deterministic
     checks verify the citations and counts, the model critiques the rendered
     candidate, and failed claims are revised up to ``max_revisions`` times.
-    The final report is rendered from checked claims, with exact counts and
-    line positions, without another model call. Model critique is not
-    independent factual verification.
+    Malformed critic output is requested again, up to three attempts, without
+    consuming a revision. The final report is rendered from checked claims,
+    with exact counts and line positions, without another model call. Model
+    critique is not independent factual verification.
 
     Args:
-        model: Any LangChain chat or text model.
+        model: Any `LanguageModel`.
         max_aggregates: Most aggregate identities sent in one call; at least 2.
         max_concurrency: Most batches reviewed at once; ``None`` reviews all
-            batches in parallel.
+            batches concurrently.
         max_revisions: Most repair rounds per batch.
+        timeout: Seconds allowed for each model call; ``None`` waits
+            indefinitely.
         task: Question the summary answers.
 
     Raises:
-        TypeError: If ``model`` is not a LangChain language model.
+        TypeError: If ``model`` is not a `LanguageModel`.
         ValueError: If a limit is out of range or ``task`` is empty.
     """
 
     def __init__(
         self,
-        model: BaseLanguageModel[Any],
+        model: LanguageModel,
         *,
         max_aggregates: int = DEFAULT_MAX_AGGREGATES,
         max_concurrency: int | None = None,
         max_revisions: int = 2,
+        timeout: float | None = None,
         task: str = DEFAULT_TASK,
     ) -> None:
-        if not isinstance(model, BaseLanguageModel):
-            raise TypeError("model must be a LangChain BaseLanguageModel")
+        if not isinstance(model, LanguageModel):
+            raise TypeError("model must be a LanguageModel")
         if not isinstance(task, str) or not task.strip():
             raise ValueError("task must be a non-empty string")
+        self._model = model
         self._max_aggregates = _validated_size("max_aggregates", max_aggregates, 2)
         self._max_concurrency = (
             None
             if max_concurrency is None
             else _validated_size("max_concurrency", max_concurrency, 1)
         )
-        self._task = task
         self._max_revisions = _validated_size("max_revisions", max_revisions, 0)
-        self._chains: dict[str, Runnable[dict[str, str], str]] = {
-            stage: ChatPromptTemplate.from_messages(
-                [
-                    SystemMessage(content=f"{_RULES}\n\n{instruction}"),
-                    ("human", "Task: {task}\n\n<evidence>\n{payload}\n</evidence>"),
-                ]
-            )
-            | model
-            | StrOutputParser()
-            for stage, instruction in {"draft": _DRAFT, "critic": _CRITIC}.items()
-        }
-        self._review_graph = self._build_review_graph()
-        self._graph = self._build_graph()
+        self._timeout = validated_timeout("timeout", timeout)
+        self._task = task
+
+    @property
+    def model(self) -> LanguageModel:
+        """The model that drafts and critiques claims."""
+        return self._model
 
     @property
     def max_aggregates(self) -> int:
@@ -363,8 +331,11 @@ class EvidenceSummarizer:
 
         Raises:
             SummaryValidationError: If a batch still fails review after
-                ``max_revisions`` repairs or yields no task-relevant claims.
-            TypeError: If an item is not an ``EvidenceAggregate``.
+                ``max_revisions`` repairs, the critic never returns a valid
+                critique, or review yields no task-relevant claims.
+            TimeoutError: If a model call exceeds ``timeout``.
+            TypeError: If an item is not an ``EvidenceAggregate`` or the
+                model returns something other than text.
             ValueError: If there is nothing to summarize, the same aggregate
                 appears twice, or ``draft`` is empty.
         """
@@ -402,162 +373,121 @@ class EvidenceSummarizer:
                 severity_occurrences[severity] = (
                     severity_occurrences.get(severity, 0) + fact.occurrences
                 )
-        source_scope = _SourceScope(
-            partial=len(batches) > 1, severity_occurrences=severity_occurrences
+        scope = _SourceScope(partial=len(batches) > 1, severity_occurrences=severity_occurrences)
+        limiter = (
+            asyncio.Semaphore(self._max_concurrency) if self._max_concurrency is not None else None
         )
-        config: RunnableConfig = {"recursion_limit": 6}
-        state = await self._graph.ainvoke(
-            {
-                "batches": batches,
-                "initial_draft": draft,
-                "source_scope": source_scope,
-                "limiter": (
-                    asyncio.Semaphore(self._max_concurrency)
-                    if self._max_concurrency is not None
-                    else None
-                ),
-            },
-            config,
+        failed = asyncio.Event()
+        try:
+            async with asyncio.TaskGroup() as group:
+                tasks = [
+                    group.create_task(self._review(batch, draft, scope, limiter, failed))
+                    for batch in batches
+                ]
+        except BaseExceptionGroup as failures:
+            # Surface the first failure itself so callers can catch it by type;
+            # the group, with any concurrent failures, remains its cause.
+            raise failures.exceptions[0] from failures
+        reviewed = [task.result() for task in tasks]
+        text = _render_report(
+            [(claims, facts) for (claims, _), facts in zip(reviewed, batches, strict=True)],
+            scope,
         )
+        if not text:
+            raise SummaryValidationError("Review produced no task-relevant claims")
         return EvidenceSummary(
-            text=state["summary"],
+            text=text,
             aggregates=len(items),
             batches=len(batches),
-            calls=state["calls"],
+            calls=sum(calls for _, calls in reviewed),
         )
 
-    def _build_review_graph(self) -> Any:
-        def payload(
-            state: _ReviewState, *, rendered_candidate: str | None = None
-        ) -> dict[str, str]:
-            document: dict[str, object] = {
-                "facts": [fact.to_dict() for fact in state["facts"]],
-                "draft": state["draft"],
-                "issues": state.get("issues", []),
-                "source_scope": state["source_scope"],
-            }
-            if rendered_candidate is not None:
-                document["rendered_candidate"] = rendered_candidate
-            return {
-                "task": self._task,
-                "payload": json.dumps(document),
-            }
+    async def _review(
+        self,
+        facts: tuple[Fact, ...],
+        draft: str | None,
+        scope: _SourceScope,
+        limiter: asyncio.Semaphore | None,
+        failed: asyncio.Event,
+    ) -> tuple[Claims, int]:
+        async with limiter or contextlib.nullcontext():
+            # A queued batch can acquire the limiter released by a failed one
+            # before the task group cancels it; never spend calls after that.
+            if failed.is_set():
+                raise asyncio.CancelledError
+            try:
+                return await self._review_batch(facts, draft, scope)
+            except BaseException:
+                failed.set()
+                raise
 
-        async def draft(state: _ReviewState) -> _ReviewState:
-            text = await self._chains["draft"].ainvoke(payload(state))
-            return {"draft": text, "calls": state["calls"] + 1}
+    async def _review_batch(
+        self, facts: tuple[Fact, ...], draft: str | None, scope: _SourceScope
+    ) -> tuple[Claims, int]:
+        calls = 0
+        issues: list[str] = []
+        for _ in range(self._max_revisions + 1):
+            draft = await self._call(_DRAFT, self._payload(facts, draft, issues, scope))
+            calls += 1
+            claims, issues = check_claims(draft, facts)
+            if issues:
+                continue
+            candidate = _render_report([(claims, facts)], scope)
+            issues, used = await self._critique(facts, draft, scope, candidate)
+            calls += used
+            if not issues:
+                return claims, calls
+        raise SummaryValidationError(
+            f"Summary failed validation after {self._max_revisions} revisions: " + "; ".join(issues)
+        )
 
-        def validate(state: _ReviewState) -> _ReviewState:
-            claims, issues = check_claims(state["draft"] or "", state["facts"])
-            return {"claims": claims, "issues": issues}
-
-        async def critic(state: _ReviewState) -> _ReviewState:
-            candidate = _render_report(
-                [(state["claims"], state["facts"])], state["source_scope"]
-            )
-            text = await self._chains["critic"].ainvoke(
-                payload(state, rendered_candidate=candidate)
+    async def _critique(
+        self, facts: tuple[Fact, ...], draft: str, scope: _SourceScope, candidate: str
+    ) -> tuple[list[str], int]:
+        issues: list[str] = []
+        for attempt in range(1, _CRITIC_ATTEMPTS + 1):
+            text = await self._call(
+                _CRITIC, self._payload(facts, draft, issues, scope, candidate=candidate)
             )
             try:
-                critique = Critique.model_validate_json(text)
+                return Critique.model_validate_json(text).issues, attempt
             except ValidationError:
-                return {
-                    "issues": [
-                        "Critic returned invalid structured output; the candidate "
-                        "has not been approved. Return a valid critique."
-                    ],
-                    "calls": state["calls"] + 1,
-                }
-            return {"issues": critique.issues, "calls": state["calls"] + 1}
-
-        def repair(state: _ReviewState) -> _ReviewState:
-            if state["attempt"] >= self._max_revisions:
-                raise SummaryValidationError(
-                    "Summary failed validation after "
-                    f"{state['attempt']} revisions: {'; '.join(state['issues'])}"
-                )
-            return {"attempt": state["attempt"] + 1}
-
-        # LangGraph's StateT bound rejects total=False TypedDict states, which
-        # it supports at runtime.
-        graph = StateGraph(_ReviewState)  # type: ignore[bad-specialization]
-        graph.add_node("draft", draft)
-        graph.add_node("validate", validate)
-        graph.add_node("critic", critic)
-        graph.add_node("repair", repair)
-        graph.add_edge(START, "draft")
-        graph.add_edge("draft", "validate")
-        graph.add_conditional_edges(
-            "validate",
-            lambda state: "repair" if state["issues"] else "critic",
-            ["repair", "critic"],
+                issues = [
+                    "Critic returned invalid structured output; the candidate "
+                    "has not been approved. Return a valid critique."
+                ]
+        raise SummaryValidationError(
+            f"Critic returned invalid structured output {_CRITIC_ATTEMPTS} times"
         )
-        graph.add_conditional_edges(
-            "critic",
-            lambda state: "repair" if state["issues"] else END,
-            ["repair", END],
-        )
-        graph.add_edge("repair", "draft")
-        return graph.compile()
 
-    def _build_graph(self) -> Any:
-        async def review(job: _Job) -> _State:
-            reviewed = await self._review_graph.ainvoke(
-                {
-                    "facts": job["facts"],
-                    "draft": job["initial_draft"],
-                    "attempt": 0,
-                    "calls": 0,
-                    "source_scope": job["source_scope"],
-                },
-                {"recursion_limit": 5 * (self._max_revisions + 1) + 3},
+    def _payload(
+        self,
+        facts: tuple[Fact, ...],
+        draft: str | None,
+        issues: list[str],
+        scope: _SourceScope,
+        *,
+        candidate: str | None = None,
+    ) -> str:
+        document: dict[str, object] = {
+            "facts": [fact.to_dict() for fact in facts],
+            "draft": draft,
+            "issues": issues,
+            "source_scope": scope,
+        }
+        if candidate is not None:
+            document["rendered_candidate"] = candidate
+        return json.dumps(document)
+
+    async def _call(self, instruction: str, payload: str) -> str:
+        messages = (
+            ChatMessage("system", f"{_RULES}\n\n{instruction}"),
+            ChatMessage("user", f"Task: {self._task}\n\n<evidence>\n{payload}\n</evidence>"),
+        )
+        async with asyncio.timeout(self._timeout):
+            reply = await self._model.complete(messages)
+        if not isinstance(reply, str):
+            raise TypeError(
+                f"{self._model.name} returned {type(reply).__name__}; expected the reply text"
             )
-            return {
-                "partials": [(job["index"], reviewed["claims"], job["facts"])],
-                "calls": reviewed["calls"],
-            }
-
-        async def call(job: _Job) -> _State:
-            limiter = job["limiter"]
-            if limiter is None:
-                return await review(job)
-            async with limiter:
-                return await review(job)
-
-        def fan_out(state: _State) -> list[Send]:
-            batches = state["batches"]
-            return [
-                Send(
-                    "call",
-                    _Job(
-                        index=index,
-                        facts=batch,
-                        initial_draft=state["initial_draft"],
-                        source_scope=state["source_scope"],
-                        limiter=state["limiter"],
-                    ),
-                )
-                for index, batch in enumerate(batches)
-            ]
-
-        def finish(state: _State) -> _State:
-            documents = [
-                (claims, facts)
-                for _, claims, facts in sorted(
-                    state["partials"], key=lambda row: row[0]
-                )
-            ]
-            text = _render_report(documents, state["source_scope"])
-            if not text:
-                raise SummaryValidationError("Review produced no task-relevant claims")
-            return {"summary": text}
-
-        # LangGraph's protocols do not admit a total=False TypedDict state or a
-        # node whose input is a Send payload, though both are supported.
-        graph = StateGraph(_State)  # type: ignore[bad-specialization]
-        graph.add_node("call", call)  # type: ignore[bad-argument-type]
-        graph.add_node("finish", finish)
-        graph.add_conditional_edges(START, fan_out, ["call"])
-        graph.add_edge("call", "finish")
-        graph.add_edge("finish", END)
-        return graph.compile()
+        return reply

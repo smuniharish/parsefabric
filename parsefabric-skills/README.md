@@ -1,44 +1,67 @@
-# parsefabric Agent Skills
+# ParseFabric Agent Skills
 
-This directory is the canonical Agent Skills distribution for `parsefabric`.
-It contains procedural guidance for coding agents that integrate, configure,
-extend, test or debug the existing `parsefabric` package.
+This directory distributes two Agent Skills that teach coding agents to use
+the `parsefabric` package correctly. They are not part of the Python package
+and add no runtime behavior.
 
-It is not a Python package and does not add runtime behavior.
+| Skill | Use it to |
+| --- | --- |
+| [`parsefabric`](skills/parsefabric/SKILL.md) | Use ParseFabric in an application: parse logs, JSON, tracebacks, command output and mixed documents with evidence, store and rebuild aggregates, stream and partition work, send telemetry, write checked model summaries, and troubleshoot |
+| [`parsefabric-extend`](skills/parsefabric-extend/SKILL.md) | Extend ParseFabric: subclass one of its abstract base classes, such as a parser, codec, execution backend, sink or language model, and prove it with the contract checks |
 
-| Component | Location | Purpose |
+Install both with the [skills CLI](https://github.com/vercel-labs/skills),
+which finds them through [`skills.sh.json`](../skills.sh.json):
+
+```bash
+npx skills add smuniharish/parsefabric                          # both
+npx skills add smuniharish/parsefabric --skill parsefabric      # one
+```
+
+Other ways to install are in the
+[documentation](https://parsefabric.readthedocs.io/en/latest/agent-skills/install/).
+
+## Layout
+
+Each skill follows the [Agent Skills specification](https://agentskills.io/specification):
+
+```text
+skills/<skill>/
+??? SKILL.md      # frontmatter, workflow, rules, gotchas, links to every file
+??? references/   # focused documents, one level deep, read only when a task needs them
+??? scripts/      # offline checks with --help, --json, and meaningful exit codes
+??? assets/       # templates the agent copies into the project, each with its tests
+??? evals/        # evals.json, trigger_queries.json, and the input files they use
+```
+
+| Skill | Scripts | Assets |
 | --- | --- | --- |
-| parsefabric library | [`src/parsefabric/`](../src/parsefabric/) | The published Python package and its public API |
-| parsefabric Agent Skill | [`skills/parsefabric/`](skills/parsefabric/) | Canonical guidance for integrating and operating the library |
-| Skill validation | [`validation/`](validation/) | Validation procedure and agent-task matrix |
+| `parsefabric` | `verify_setup.py`: checks the installation and parses, stores and rebuilds a sample offline; LangChain too when installed (`--langchain` to require it) | `test_parsing.py` |
+| `parsefabric-extend` | `check_extension.py`: detects which abstract base class an extension subclasses and runs its contract check | `parser_template.py`, `test_parser.py`, `sink_template.py`, `test_sink.py` |
 
-## Agent Skills format
+Every Agent Skills host reads the same directories, so there is no separate
+copy for Claude Code, Codex, Cursor or GitHub Copilot.
 
-The skill follows the
-[Agent Skills specification](https://agentskills.io/specification): a
-directory with a `SKILL.md` file whose YAML frontmatter holds the required
-`name` and `description`. The `name`, `parsefabric`, matches the directory
-name, and only the required frontmatter fields are used, for portability.
+## Format
 
-Compatible agents load [`skills/parsefabric/SKILL.md`](skills/parsefabric/SKILL.md)
-when a task involves parsing operational text into evidence-backed events
-with ParseFabric. The skill links to the authoritative documentation and
-examples instead of keeping a second copy of them.
+- `name` matches the directory. The `description` starts with "Use this skill
+  when", names near misses, and hands over to the other skill where they
+  meet.
+- `license`, `compatibility` and `metadata.version` are set. The version
+  equals the `parsefabric` release the skill describes.
+- `SKILL.md` stays short and links every reference with the task that needs
+  it. Scripts and assets are referenced by paths relative to the skill
+  directory.
 
-There are no host-specific copies of the skill; every compatible host reads
-the same `SKILL.md`. Installation instructions for Claude Code, Codex, Cursor,
-GitHub Copilot and other hosts are in the
-[Agent Skills guide](https://parsefabric.readthedocs.io/en/latest/agent-skills/).
+## Maintaining the skills
 
-## Maintaining the distribution
+When the public API or documented behavior changes:
 
-When the public API, the supported workflows or documented behavior change:
+1. Update the affected skill, and `metadata.version` in both skills with each
+   release.
+2. Check every changed snippet and claim against the code, tests or
+   documentation. Leave out anything that is not implemented.
+3. Add or update an eval when the change affects what an agent should do.
+4. Run the checks in [`validation/README.md`](validation/README.md).
 
-1. Update the skill, limited to the verified change.
-2. Link to the corresponding documentation, examples or tests instead of
-   duplicating them.
-3. Run the process in [`validation/README.md`](validation/README.md).
-4. Do not add host-specific copies of the skill text.
-
-The distribution is covered by the repository's Apache License 2.0; see
+The skills are covered by the repository's Apache License 2.0; see
 [LICENSE](../LICENSE).

@@ -11,7 +11,7 @@ SHA-256 over its complete canonical events, and
 
 Every aggregate has one canonical JSON form (`Aggregate.to_dict`),
 identical for every parser because the only parser-specific value, the entry
-``message``, is itself JSON; `Parser.serialize` owns the envelope.
+``message``, is itself JSON; `EvidenceCodec` writes the document envelope.
 """
 
 from __future__ import annotations
@@ -20,11 +20,9 @@ import hashlib
 import re
 from collections.abc import AsyncIterable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, ClassVar, override
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from parsefabric._json import (
-    canonical_dumps,
     check_text,
     copy_json,
     dumps,
@@ -32,7 +30,10 @@ from parsefabric._json import (
 )
 from parsefabric.aggregation.base import Aggregate, Aggregator
 from parsefabric.errors import CapabilityError, IntegrityError
-from parsefabric.models import Evidence, JSONValue, ParsedEvent
+from parsefabric.models import JSONValue, ParsedEvent
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 type Position = int | None
 type MessageFunction = Callable[[ParsedEvent], JSONValue]
@@ -57,7 +58,7 @@ def canonical_event(event: ParsedEvent) -> str:
     Returns:
         The canonical text.
     """
-    return canonical_dumps(event._to_wire())
+    return dumps(event._to_wire(), sort_keys=True)
 
 
 def default_event_message(event: ParsedEvent) -> JSONValue:
@@ -99,7 +100,7 @@ def _is_position(value: object) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class EvidenceEntry:
-    """One distinct message, or one consecutive run of it, and where it occurs.
+    """One distinct message and where it occurs.
 
     ``positions`` holds the 1-based source line of each occurrence in source
     order (the first line of a multi-line event), or ``None`` when the parser
@@ -215,9 +216,7 @@ class EvidenceAggregate(Aggregate):
         for value in (self.source_id, self.parser_name, self.parser_version):
             if value is not None:
                 if not isinstance(value, str):
-                    raise ValueError(
-                        "source, parser name, and version must be str or None"
-                    )
+                    raise ValueError("source, parser name, and version must be str or None")
                 check_text(value, "source, parser name, and version")
         if (
             not isinstance(self.groups, tuple)
@@ -230,9 +229,7 @@ class EvidenceAggregate(Aggregate):
             raise ValueError("occurrences do not add up to the aggregate count")
         if len({bool(entry.events) for entry in entries}) > 1:
             raise ValueError("either every entry or none retains its events")
-        if not isinstance(self.events_sha256, str) or not _SHA256.fullmatch(
-            self.events_sha256
-        ):
+        if not isinstance(self.events_sha256, str) or not _SHA256.fullmatch(self.events_sha256):
             raise ValueError("events_sha256 must be a lowercase SHA-256 hex digest")
 
     @property
@@ -335,43 +332,26 @@ class _Document:
     event_type: str
     parser_name: str | None
     parser_version: str | None
-    groups: dict[tuple[str | None, str | None], list[_Entry]] = field(
-        default_factory=dict
-    )
+    groups: dict[tuple[str | None, str | None], dict[object, _Entry]] = field(default_factory=dict)
     digest: Any = field(default_factory=hashlib.sha256)
     count: int = 0
     first_seen: datetime | None = None
     last_seen: datetime | None = None
 
 
-def _adjacent(previous: Evidence, current: Evidence) -> bool:
-    """Whether ``current`` directly follows ``previous`` in the source.
-
-    Events whose byte spans abut are adjacent. Otherwise events on the same
-    or the next line are adjacent, so any skipped line, blank or not, starts
-    a new run regardless of the line ending. Events without comparable
-    locations follow each other in stream order.
-    """
-    has_offsets = previous.end_offset is not None and current.start_offset is not None
-    if has_offsets and current.start_offset == previous.end_offset:
-        return True
-    if previous.line_number is not None and current.line_number is not None:
-        return 0 <= current.line_number - previous.line_number <= 1
-    return not has_offsets
-
-
 def _identity(aggregate: EvidenceAggregate) -> tuple[str, str | None]:
     return aggregate.event_type, aggregate.parser_name
 
 
-class EvidenceAggregator(Aggregator):
+class EvidenceAggregator(Aggregator[EvidenceAggregate]):
     """Group events by type, parser, pattern, severity and message losslessly.
 
-    Each source yields one aggregate per ``(event_type, parser_name)``. Only
-    identical events that directly follow each other in the source form one
-    entry listing the line position of each event in the run, so a
-    recurrence after any other event or skipped source line starts a new
-    entry and the source order is kept.
+    Each source yields one aggregate per ``(event_type, parser_name)``. All
+    events of a group with the same message form one entry that lists the
+    line position of every occurrence in source order, so a message that
+    recurs throughout a document is stored once. The checksum, and the
+    stream positions of retained events, keep the exact event order
+    verifiable.
 
     Args:
         reproducible: Whether the owning parser rebuilds identical events from
@@ -432,18 +412,10 @@ class EvidenceAggregator(Aggregator):
         versions: dict[str, str | None] = {}
         source_id: str | None = None
         last_line: int | None = None
-        # Run key and evidence of the previous event.
-        previous: (
-            tuple[
-                tuple[tuple[str, str | None], tuple[str | None, str | None], object],
-                Evidence,
-            ]
-            | None
-        ) = None
         count = 0
 
         def add(event: ParsedEvent) -> None:
-            nonlocal source_id, last_line, previous, count
+            nonlocal source_id, last_line, count
             if not isinstance(event, ParsedEvent):
                 raise TypeError("events must be ParsedEvent instances")
             evidence = event.evidence
@@ -453,9 +425,7 @@ class EvidenceAggregator(Aggregator):
             if last_line is not None and line is not None and line < last_line:
                 raise ValueError("events must be in source order")
             if evidence.parser_name is not None:
-                known = versions.setdefault(
-                    evidence.parser_name, evidence.parser_version
-                )
+                known = versions.setdefault(evidence.parser_name, evidence.parser_version)
                 if known != evidence.parser_version:
                     raise ValueError(
                         f"parser {evidence.parser_name!r} appears with "
@@ -474,17 +444,10 @@ class EvidenceAggregator(Aggregator):
             group_key = (evidence.pattern_name, event.severity)
             message = self._message(event)
             message_key = _message_key(message)
-            entries = document.groups.setdefault(group_key, [])
-            current = (doc_key, group_key, message_key)
-            if (
-                previous is not None
-                and previous[0] == current
-                and _adjacent(previous[1], evidence)
-            ):
-                entry = entries[-1]
-            else:
-                entry = _Entry(message)
-                entries.append(entry)
+            entries = document.groups.setdefault(group_key, {})
+            entry = entries.get(message_key)
+            if entry is None:
+                entry = entries[message_key] = _Entry(message)
             entry.positions.append(line)
             entry.occurrences += 1
             if not self.reproducible:
@@ -503,7 +466,6 @@ class EvidenceAggregator(Aggregator):
                     if document.last_seen is None
                     else max(document.last_seen, event.timestamp)
                 )
-            previous = (current, evidence)
             count += 1
 
         if isinstance(events, AsyncIterable):
@@ -513,13 +475,10 @@ class EvidenceAggregator(Aggregator):
             for event in events:
                 add(event)
         return tuple(
-            self._document_aggregate(document, source_id)
-            for document in documents.values()
+            self._document_aggregate(document, source_id) for document in documents.values()
         )
 
-    def _document_aggregate(
-        self, document: _Document, source_id: str | None
-    ) -> EvidenceAggregate:
+    def _document_aggregate(self, document: _Document, source_id: str | None) -> EvidenceAggregate:
         return EvidenceAggregate(
             event_type=document.event_type,
             count=document.count,
@@ -540,7 +499,7 @@ class EvidenceAggregator(Aggregator):
                             tuple(entry.events),
                             tuple(entry.sequence),
                         )
-                        for entry in entries
+                        for entry in entries.values()
                     ),
                 )
                 for (pattern, severity), entries in document.groups.items()
@@ -558,9 +517,7 @@ class EvidenceAggregator(Aggregator):
                 raise TypeError("aggregates must be EvidenceAggregate instances")
             key = _identity(aggregate)
             if key in keys:
-                raise IntegrityError(
-                    "duplicate aggregate for one event type and parser"
-                )
+                raise IntegrityError("duplicate aggregate for one event type and parser")
             keys.add(key)
             sources.add(aggregate.source_id)
             selected.append(aggregate)
@@ -615,9 +572,7 @@ class EvidenceAggregator(Aggregator):
                 the candidate events.
         """
         selected = self._validate(aggregates)
-        candidates = (
-            list(events) if events is not None else self._retained_events(selected)
-        )
+        candidates = list(events) if events is not None else self._retained_events(selected)
         try:
             rebuilt = await self.aggregate(candidates)
         except (TypeError, ValueError) as error:
@@ -634,7 +589,7 @@ class EvidenceAggregator(Aggregator):
     @override
     async def merge(
         self, partials: Iterable[Aggregate] | AsyncIterable[Aggregate]
-    ) -> tuple[Aggregate, ...]:
+    ) -> tuple[EvidenceAggregate, ...]:
         """Combine aggregates of distinct source documents.
 
         Args:
@@ -654,6 +609,7 @@ class EvidenceAggregator(Aggregator):
         else:
             items = list(partials)
         seen: set[tuple[str | None, str, str | None]] = set()
+        merged: list[EvidenceAggregate] = []
         for item in items:
             if not isinstance(item, EvidenceAggregate):
                 raise TypeError("partials must be EvidenceAggregate instances")
@@ -664,4 +620,5 @@ class EvidenceAggregator(Aggregator):
                     "complete source once instead of merging partitions"
                 )
             seen.add(key)
-        return tuple(items)
+            merged.append(item)
+        return tuple(merged)

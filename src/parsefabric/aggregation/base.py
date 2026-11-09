@@ -1,19 +1,17 @@
 """Aggregate models and the aggregator contract.
 
-Aggregates are typed Python objects with a fixed, package-owned JSON form.
+Aggregates are typed Python objects with a fixed JSON form.
 `Aggregate.to_dict` and `Aggregate.from_dict` convert one concrete
-aggregate type; there is no registry of aggregate kinds because every parser
-produces the same `EvidenceAggregate` and
-serializes it through the package-managed `Parser.serialize`.
+aggregate type; an `AggregateCodec` from `parsefabric.codecs` encodes whole
+documents of them for storage.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, ClassVar, Self, override
+from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 
 from parsefabric._json import (
     STRUCTURE_DEPTH,
@@ -23,7 +21,11 @@ from parsefabric._json import (
     require_object,
 )
 from parsefabric.errors import CapabilityError
-from parsefabric.models import JSONValue, ParsedEvent
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterable, Iterable, Sequence
+
+    from parsefabric.models import JSONValue, ParsedEvent
 
 _TIME_FIELDS = frozenset(("first_seen", "last_seen"))
 
@@ -127,7 +129,7 @@ class Aggregate:
         return {}
 
     @classmethod
-    def _fields_from_dict(cls, fields: dict[str, Any]) -> dict[str, Any]:
+    def _fields_from_dict(cls, fields: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG003
         """Return constructor arguments for the type-specific fields."""
         return {}
 
@@ -203,8 +205,12 @@ class CountAggregate(Aggregate):
         )
 
 
-class Aggregator(ABC):
-    """Aggregation strategy of a parser, with explicit merge behavior."""
+class Aggregator[AggregateT: Aggregate](ABC):
+    """Aggregation strategy of a parser, with explicit merge behavior.
+
+    ``AggregateT`` is the type of aggregate it produces, such as
+    `EvidenceAggregate` or `CountAggregate`.
+    """
 
     @property
     def lossless(self) -> bool:
@@ -218,8 +224,8 @@ class Aggregator(ABC):
 
     async def materialize(
         self,
-        aggregates: Sequence[Aggregate],
-        events: Sequence[ParsedEvent] | None = None,
+        aggregates: Sequence[Aggregate],  # noqa: ARG002 - lossless aggregators override
+        events: Sequence[ParsedEvent] | None = None,  # noqa: ARG002
     ) -> tuple[ParsedEvent, ...]:
         """Rebuild and verify the original events.
 
@@ -234,14 +240,12 @@ class Aggregator(ABC):
         Raises:
             CapabilityError: Always, for lossy aggregators.
         """
-        raise CapabilityError(
-            f"{type(self).__name__} is a lossy aggregator and cannot materialize"
-        )
+        raise CapabilityError(f"{type(self).__name__} is a lossy aggregator and cannot materialize")
 
     @abstractmethod
     async def aggregate(
         self, events: Iterable[ParsedEvent] | AsyncIterable[ParsedEvent]
-    ) -> tuple[Aggregate, ...]:
+    ) -> tuple[AggregateT, ...]:
         """Create aggregates from an event stream.
 
         Args:
@@ -254,7 +258,7 @@ class Aggregator(ABC):
     @abstractmethod
     async def merge(
         self, partials: Iterable[Aggregate] | AsyncIterable[Aggregate]
-    ) -> tuple[Aggregate, ...]:
+    ) -> tuple[AggregateT, ...]:
         """Merge partial aggregates into deterministic output.
 
         Args:

@@ -11,13 +11,8 @@ import re
 import sys
 import time
 from collections import Counter
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, TypedDict
-
-from langchain_core.callbacks import AsyncCallbackHandler
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from typing import TYPE_CHECKING, Literal, TypedDict, override
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
@@ -26,14 +21,13 @@ from mixed_custom_and_builtin import make_parser
 from parsefabric import EvidenceAggregator, ParseContext
 from parsefabric._summary_review import Fact, facts_for
 from parsefabric.errors import SummaryValidationError
+from parsefabric.llm import ChatMessage, LanguageModel
 from parsefabric.summarization import EvidenceSummarizer
 
-INCIDENT = (
-    Path(__file__).resolve().parents[1]
-    / "examples"
-    / "data"
-    / "mixed-shop-incident.txt"
-)
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+INCIDENT = Path(__file__).resolve().parents[1] / "examples" / "data" / "mixed-shop-incident.txt"
 
 
 class EvaluationRow(TypedDict):
@@ -49,21 +43,24 @@ class EvaluationRow(TypedDict):
     summary: str | None
 
 
-class CallCounter(AsyncCallbackHandler):
-    def __init__(self) -> None:
+class CountingModel(LanguageModel):
+    """Counts the requests and drafting requests sent to the wrapped model."""
+
+    def __init__(self, model: LanguageModel) -> None:
+        self.model = model
         self.calls = 0
         self.drafts = 0
 
-    async def on_chat_model_start(
-        self,
-        serialized: dict[str, Any],
-        messages: list[list[BaseMessage]],
-        **kwargs: Any,
-    ) -> None:
-        self.calls += len(messages)
-        self.drafts += sum(
-            "Draft structured claims" in str(batch[0].content) for batch in messages
-        )
+    @property
+    @override
+    def name(self) -> str:
+        return self.model.name
+
+    @override
+    async def complete(self, messages: Sequence[ChatMessage]) -> str:
+        self.calls += 1
+        self.drafts += "Draft structured claims" in messages[0].content
+        return await self.model.complete(messages)
 
 
 def fixtures() -> dict[str, str]:
@@ -93,16 +90,12 @@ def recorded_contract_discrepancies(text: str, facts: tuple[Fact, ...]) -> list[
         text,
     )
     eligible = [fact for fact in facts if fact.event_type != "fence"]
-    if sum(int(count) for count, _ in primary) != sum(
-        fact.occurrences for fact in eligible
-    ):
+    if sum(int(count) for count, _ in primary) != sum(fact.occurrences for fact in eligible):
         issues.append("rendered primary totals differ from recorded occurrences")
     expected_positions: Counter[tuple[str | None, int | None]] = Counter()
     observed_positions: Counter[tuple[str | None, int | None]] = Counter()
     for fact in eligible:
-        expected_positions.update(
-            (fact.source_id, position) for position in fact.positions
-        )
+        expected_positions.update((fact.source_id, position) for position in fact.positions)
     for _, citation in primary:
         for source, positions in re.findall(
             r'source ("(?:\\.|[^"])*"|null), lines ([0-9, unknown]+)(?=;|$)',
@@ -113,9 +106,7 @@ def recorded_contract_discrepancies(text: str, facts: tuple[Fact, ...]) -> list[
                 for position in positions.split(", ")
             )
     if observed_positions != expected_positions:
-        issues.append(
-            "rendered source/position multiset differs from recorded evidence"
-        )
+        issues.append("rendered source/position multiset differs from recorded evidence")
     for fact in facts:
         if fact.event_type == "fence":
             continue
@@ -132,7 +123,7 @@ def recorded_contract_discrepancies(text: str, facts: tuple[Fact, ...]) -> list[
 
 
 async def evaluate(
-    model_factory: Callable[[CallCounter], BaseChatModel],
+    model_factory: Callable[[], LanguageModel],
     *,
     repetitions: int = 3,
     run_timeout: float = 120,
@@ -147,14 +138,11 @@ async def evaluate(
         parsed = await parser.parse(source, ParseContext(source_id=name))
         if parsed.errors:
             raise RuntimeError(f"evaluation fixture {name} has parsing errors")
-        aggregates = await EvidenceAggregator(reproducible=False).aggregate(
-            parsed.events
-        )
+        aggregates = await EvidenceAggregator(reproducible=False).aggregate(parsed.events)
         facts = facts_for(aggregates)
         for size in (10, 2):
             for repetition in range(1, repetitions + 1):
-                counter = CallCounter()
-                model = model_factory(counter)
+                counter = CountingModel(model_factory())
                 started = time.perf_counter()
                 status: Literal[
                     "accepted", "validation_rejected", "timed_out", "contract_failed"
@@ -165,7 +153,7 @@ async def evaluate(
                 try:
                     async with asyncio.timeout(run_timeout):
                         summary = await EvidenceSummarizer(
-                            model,
+                            counter,
                             max_aggregates=size,
                             max_concurrency=1,
                             max_revisions=2,
@@ -173,12 +161,8 @@ async def evaluate(
                     batches = summary.batches
                     summary_text = summary.text
                     if summary.calls != counter.calls:
-                        discrepancies.append(
-                            "reported call count differs from callbacks"
-                        )
-                    discrepancies.extend(
-                        recorded_contract_discrepancies(summary.text, facts)
-                    )
+                        discrepancies.append("reported call count differs from model requests")
+                    discrepancies.extend(recorded_contract_discrepancies(summary.text, facts))
                     if discrepancies:
                         status = "contract_failed"
                 except SummaryValidationError as error:
@@ -213,13 +197,9 @@ def report(rows: list[EvaluationRow], *, model: str) -> dict[str, object]:
         "runs": len(rows),
         "accepted": accepted,
         "acceptance_rate": accepted / len(rows) if rows else 0,
-        "validation_rejected": sum(
-            row["status"] == "validation_rejected" for row in rows
-        ),
+        "validation_rejected": sum(row["status"] == "validation_rejected" for row in rows),
         "timed_out": sum(row["status"] == "timed_out" for row in rows),
-        "recorded_contract_failures": sum(
-            row["status"] == "contract_failed" for row in rows
-        ),
+        "recorded_contract_failures": sum(row["status"] == "contract_failed" for row in rows),
         "runs_with_repair": sum(row["repair_drafts"] > 0 for row in rows),
         "calls": sum(row["calls"] for row in rows),
         "semantic_error_rate": None,
@@ -238,26 +218,29 @@ def main() -> None:
     args = options.parse_args()
     key = os.environ.get("PARSEFABRIC_LLM_API_KEY")
     if not key:
-        options.error(
-            "PARSEFABRIC_LLM_API_KEY is required; no live evaluation performed"
-        )
-    from langchain_openai import ChatOpenAI
+        options.error("PARSEFABRIC_LLM_API_KEY is required; no live evaluation performed")
+    from llm_summary_openai_compatible import DEFAULT_MODEL, OpenAICompatibleModel
+    from openai import AsyncOpenAI
 
-    model_name = os.environ.get("PARSEFABRIC_LLM_MODEL", "gpt-5-mini")
+    model_name = os.environ.get("PARSEFABRIC_LLM_MODEL", DEFAULT_MODEL)
 
-    def model_factory(counter: CallCounter) -> BaseChatModel:
-        return ChatOpenAI(
-            model=model_name,
+    async def run() -> list[EvaluationRow]:
+        client = AsyncOpenAI(
             api_key=key,
             base_url=os.environ.get("PARSEFABRIC_LLM_BASE_URL") or None,
             timeout=args.timeout,
             max_retries=0,
-            callbacks=[counter],
         )
+        try:
+            return await evaluate(
+                lambda: OpenAICompatibleModel(client, model_name),
+                repetitions=args.repetitions,
+                run_timeout=args.timeout,
+            )
+        finally:
+            await client.close()
 
-    rows = asyncio.run(
-        evaluate(model_factory, repetitions=args.repetitions, run_timeout=args.timeout)
-    )
+    rows = asyncio.run(run())
     print(json.dumps(report(rows, model=model_name), indent=2))
     if any(row["status"] != "accepted" for row in rows):
         raise SystemExit(1)

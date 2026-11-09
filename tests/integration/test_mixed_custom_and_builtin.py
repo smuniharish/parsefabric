@@ -67,9 +67,7 @@ async def test_mixed_custom_and_builtin_routes_in_both_modes(
             original = data[evidence.start_offset : evidence.end_offset].decode()
             assert original.strip().endswith(";")
             assert "raw_sql" not in event.attributes
-    fenced_events = [
-        event for event in result.events if event.evidence.line_number == code_line
-    ]
+    fenced_events = [event for event in result.events if event.evidence.line_number == code_line]
     assert len(fenced_events) == 1
     assert fenced_events[0].event_type == "sql_statement"
     assert fenced_events[0].evidence.parser_name == "sql-statements"
@@ -82,9 +80,7 @@ async def test_mixed_custom_and_builtin_routes_in_both_modes(
     ] == [("fence", "code_fence")] * 2
 
     documents = await parser.aggregate(result.events)
-    by_parser = {
-        (document.event_type, document.parser_name): document for document in documents
-    }
+    by_parser = {(document.event_type, document.parser_name): document for document in documents}
     assert len(by_parser) == len(documents)
     assert sum(document.count for document in documents) == events
     assert all(document.source_id == filename for document in documents)
@@ -97,23 +93,17 @@ async def test_mixed_custom_and_builtin_routes_in_both_modes(
         and message.split(" ", 1)[0] in {"select", "insert", "update", "delete"}
         for _, message, _, _ in sql_entries
     )
-    assert sql_entries[0][2] == f"{sql_lines[0]},{sql_lines[1]}"
+    assert sql_entries[0][2].split(",")[:2] == [str(sql_lines[0]), str(sql_lines[1])]
     restored = await ParseEngine().materialize(parser, source, documents)
     assert restored == result.events
     assert restored[2].attributes["sql"] == result.events[2].attributes["sql"]
 
-    first_sql = tuple(
-        event for event in result.events if event.evidence.line_number in (3, 4)
-    )
+    first_sql = tuple(event for event in result.events if event.evidence.line_number in (3, 4))
     (sql_only,) = await scenarios.SQLStatementParser().aggregate(first_sql)
     assert sql_only.count == 2
     assert [(refs, count) for _, _, refs, count in rows(sql_only)] == [("3,4", 2)]
     if custom_log_format:
-        logs = [
-            event
-            for event in restored
-            if event.evidence.parser_name == "timestamped-log"
-        ]
+        logs = [event for event in restored if event.evidence.parser_name == "timestamped-log"]
         assert [event.attributes["message"] for event in logs] == [
             "inventory scan started",
             "inventory reader stalled",
@@ -138,6 +128,6 @@ async def test_mixed_route_propagates_sql_errors_and_preserves_invalid_json(
     assert len(invalid.events) == 1
     assert invalid.events[0].event_type == "unparsed"
     assert invalid.events[0].attributes == {"text": '{"bad": }'}
-    assert invalid.errors[0].error_type == "DecodeError"
+    assert invalid.errors[0].error_type == "ParseError"
     fenced = await parser.parse("```sql\nSELECT * FROM (\n```")
     assert [event.event_type for event in fenced.events] == ["fence", "code", "fence"]

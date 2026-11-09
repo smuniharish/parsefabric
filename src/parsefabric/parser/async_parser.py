@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from parsefabric.capabilities import ParserCapabilities
-from parsefabric.models import ParseContext, ParseResult
-from parsefabric.parser.base import Parser, validated_identity
+from parsefabric.parser.base import AggregateT_co, Parser, validated_identity
+
+if TYPE_CHECKING:
+    from parsefabric.models import ParseContext, ParseResult
 
 
-class AsyncParser(Parser):
+class AsyncParser(Parser[AggregateT_co]):
     """Base class for parsers that await I/O, such as a service call, while parsing.
 
     Subclasses implement `parse`. Capabilities default to aggregatable

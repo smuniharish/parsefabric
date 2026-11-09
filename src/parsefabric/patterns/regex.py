@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
 
 from parsefabric.patterns.base import Pattern
 from parsefabric.patterns.match import PatternMatch
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class RegexPattern(Pattern):
@@ -45,9 +47,7 @@ class RegexPattern(Pattern):
         event_type: str | None = None,
         severity: str | None = None,
     ) -> None:
-        super().__init__(
-            name, priority=priority, metadata=metadata, event_type=event_type
-        )
+        super().__init__(name, priority=priority, metadata=metadata, event_type=event_type)
         if not isinstance(expression, str):
             raise ValueError("regex pattern expression must be a string")
         if severity is not None and not isinstance(severity, str):
@@ -72,7 +72,5 @@ class RegexPattern(Pattern):
         found = self._compiled.search(value)
         if found is None:
             return None
-        attributes = {
-            key: item for key, item in found.groupdict().items() if item is not None
-        }
+        attributes = {key: item for key, item in found.groupdict().items() if item is not None}
         return PatternMatch(attributes=attributes, severity=self._severity)

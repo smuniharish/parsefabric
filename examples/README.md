@@ -24,6 +24,7 @@ any example with `uv run python examples/<name>.py`.
 | [`observability.py`](observability.py) | Lifecycle events as OpenTelemetry spans and structlog records |
 | [`custom_sql.py`](custom_sql.py) | A SQLGlot statement parser with grouped, lossless evidence (needs `sqlglot`) |
 | [`mixed_custom_and_builtin.py`](mixed_custom_and_builtin.py) | The SQL parser routed alongside built-in parsers over three files (needs `sqlglot`) |
+| [`langchain_agent.py`](langchain_agent.py) | Parsers as a LangGraph node and a LangChain tool (needs the `langchain` extra and `langgraph`) |
 
 Check that every offline example still prints its recorded output:
 
@@ -41,8 +42,8 @@ send the raw input to the summarizer.
 
 | Example | Shows |
 | --- | --- |
-| [`llm_summary.py`](llm_summary.py) | Summarize aggregates with any LangChain chat model (`PARSEFABRIC_LLM_MODEL`) |
-| [`llm_summary_openai_compatible.py`](llm_summary_openai_compatible.py) | The same with an OpenAI-compatible endpoint (`PARSEFABRIC_LLM_API_KEY`, `PARSEFABRIC_LLM_BASE_URL`, `PARSEFABRIC_LLM_MODEL`) |
+| [`llm_summary_openai_compatible.py`](llm_summary_openai_compatible.py) | Summarize aggregates with a `LanguageModel` on the official `openai` client and any OpenAI-compatible endpoint (`PARSEFABRIC_LLM_API_KEY`, `PARSEFABRIC_LLM_BASE_URL`, `PARSEFABRIC_LLM_MODEL`) |
+| [`llm_summary.py`](llm_summary.py) | The same with any LangChain chat model through `LangChainLanguageModel` (`PARSEFABRIC_LLM_MODEL`) |
 | [`semantic_llm.py`](semantic_llm.py) | A `SemanticParser` that asks a model to interpret text, with an evidence-checked summary |
 
 ## Interactive playground

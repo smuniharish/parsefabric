@@ -21,11 +21,11 @@ You need Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/smuniharish/parsefabric.git
 cd parsefabric
-uv sync
+uv sync --all-extras --all-groups
 ```
 
-`uv sync` creates a virtual environment with the package in editable mode and
-every development dependency group: tests, linting, type checking,
+This creates a virtual environment with the package in editable mode, the
+`langchain` extra, and every dependency group: tests, linting, type checking,
 documentation and the dependencies of the examples.
 
 ## Run the checks
@@ -36,10 +36,12 @@ Every pull request must pass the same checks as continuous integration:
 uv run ruff check .
 uv run ruff format --check .
 uv run pyrefly check
-uv run coverage run -m pytest
-uv run coverage report
+uv run pytest --cov=parsefabric --cov-branch --cov-report=term-missing
 uv run python examples/verify_examples.py
-uv run mkdocs build --strict
+uv run agentskills validate parsefabric-skills/skills/parsefabric
+uv run agentskills validate parsefabric-skills/skills/parsefabric-extend
+uv run zensical build --strict
+uv run python scripts/check_site_links.py
 uv build
 ```
 
@@ -47,9 +49,11 @@ uv build
 | --- | --- |
 | `ruff check`, `ruff format` | Linting, Google-style docstrings and formatting |
 | `pyrefly check` | Static types across the package, tests, examples and benchmarks |
-| `coverage` with `pytest` | Every test passes, with 100% line and branch coverage of the package |
+| `pytest --cov` | Every test passes with warnings as errors, with 100% line and branch coverage of the package |
 | `verify_examples.py` | Every offline example prints exactly its recorded output |
-| `mkdocs build --strict` | The documentation builds without warnings or broken links |
+| `agentskills validate` | Both Agent Skills follow the specification; `tests/skill` runs their scripts and templates |
+| `zensical build --strict` | The documentation builds without warnings, broken links or broken anchors |
+| `check_site_links.py` | Links rendered from docstrings in the API reference resolve too |
 | `uv build` | The source distribution and wheel build |
 
 ## Tests
@@ -57,7 +61,8 @@ uv build
 Tests live in `tests/`: `unit` for focused behavior, `property` for
 [Hypothesis](https://hypothesis.readthedocs.io/) property-based tests,
 `integration` for examples, documentation and integrations, `benchmark` for
-throughput gates and `live` for tests against a real language model. See the
+throughput gates, `skill` for the Agent Skills and `live` for tests against a
+real language model. See the
 [testing guide](https://parsefabric.readthedocs.io/en/latest/development/testing/)
 for profiles, markers and live tests.
 
@@ -67,11 +72,12 @@ cannot be reached by a test, remove it rather than excluding it.
 ## Documentation
 
 The documentation in `docs/` is built with
-[MkDocs Material](https://squidfunk.github.io/mkdocs-material/) and
-[mkdocstrings](https://mkdocstrings.github.io/). Preview it with:
+[Zensical](https://zensical.org/) and
+[mkdocstrings](https://mkdocstrings.github.io/), configured in
+`zensical.toml`. Preview it with:
 
 ```bash
-uv run mkdocs serve
+uv run zensical serve
 ```
 
 - **API reference.** Generated from docstrings; document every public class,
@@ -115,9 +121,9 @@ uv run mkdocs serve
 ParseFabric follows [Semantic Versioning](https://semver.org/). The public API
 is everything documented in the
 [API reference](https://parsefabric.readthedocs.io/en/latest/reference/);
-modules and names that start with an underscore are internal. While the major
-version is 0, a minor release can contain breaking changes, which the
-changelog lists. The stored formats are versioned independently: aggregates
+modules and names that start with an underscore are internal. Patch releases
+fix bugs, minor releases add features, and only a major release changes the
+public API incompatibly. The stored formats are versioned independently: aggregates
 use `parsefabric.aggregates/1` and results use `schema_version` 1, and a new
 version of a format is introduced only for an incompatible change.
 
@@ -125,8 +131,11 @@ version of a format is introduced only for an incompatible change.
 
 Maintainers release from `main`:
 
-1. Set `__version__` in `src/parsefabric/__init__.py`.
+1. Set `version` in `pyproject.toml`; `parsefabric.__version__` reads it
+   from the installed package metadata.
 2. Move the **Unreleased** changelog entries under the new version and date.
-3. Tag the commit as `vX.Y.Z` and push the tag. The release workflow builds
-   the distributions, checks that the tag matches the package version, and
-   publishes to PyPI with trusted publishing.
+3. Set `metadata.version` in both `parsefabric-skills/skills/*/SKILL.md` to
+   the same version.
+4. Publish a GitHub release tagged `vX.Y.Z`. The release workflow checks that
+   the tag matches the package version, builds and checks the distributions,
+   and publishes them to PyPI with trusted publishing.

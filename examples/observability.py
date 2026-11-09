@@ -49,9 +49,7 @@ async def main() -> None:
     for span in exporter.get_finished_spans():
         print(f"  {span.name}: {[event.name for event in span.events]}")
 
-    structlog.configure(
-        processors=[render], logger_factory=structlog.PrintLoggerFactory()
-    )
+    structlog.configure(processors=[render], logger_factory=structlog.PrintLoggerFactory())
     print("structured log records:")
     await ParseEngine(LoggingObservabilitySink()).parse(parser, LOG, context)
 

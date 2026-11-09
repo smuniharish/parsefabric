@@ -11,6 +11,7 @@ from parsefabric.parser import DeterministicParser
 from parsefabric.parser._text import iter_text_lines
 from parsefabric.partitioning import LinePartitioner
 from parsefabric.patterns import RegexPattern
+from tests.support.aio import collect
 
 SEPARATORS = (
     "\n",
@@ -58,8 +59,8 @@ def test_framing_is_lazy_and_does_not_preencode_the_remaining_source() -> None:
 
 
 @pytest.mark.parametrize("separator", SEPARATORS)
-def test_partitioning_normalizes_one_terminal_boundary_to_lf(separator: str) -> None:
-    partitions = tuple(
+async def test_partitioning_normalizes_one_terminal_boundary_to_lf(separator: str) -> None:
+    partitions = await collect(
         LinePartitioner(max_lines=1).partition(
             [f"é{separator}", f"日本{separator}"],
             capabilities=ApplicationLogParser().capabilities,
@@ -71,11 +72,11 @@ def test_partitioning_normalizes_one_terminal_boundary_to_lf(separator: str) -> 
 
 
 @pytest.mark.parametrize("separator", SEPARATORS)
-def test_partitioning_rejects_embedded_boundaries_that_corrupt_line_numbers(
+async def test_partitioning_rejects_embedded_boundaries_that_corrupt_line_numbers(
     separator: str,
 ) -> None:
     with pytest.raises(ValueError, match="exactly one"):
-        tuple(
+        await collect(
             LinePartitioner(max_lines=1).partition(
                 [f"timeout{separator}timeout", "retry"],
                 capabilities=ApplicationLogParser().capabilities,
@@ -87,7 +88,8 @@ def test_partitioning_rejects_embedded_boundaries_that_corrupt_line_numbers(
 @pytest.mark.parametrize("value", [True, False, 1.5, 0, -1])
 def test_partition_limits_are_positive_integers(option: str, value: object) -> None:
     with pytest.raises(ValueError, match=f"{option} must be a positive integer"):
-        LinePartitioner(**{option: value})  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        LinePartitioner(**{option: value})
 
 
 @pytest.mark.parametrize("max_lines", [1, 2, 3])
@@ -105,12 +107,10 @@ async def test_partition_boundaries_preserve_blank_lines_and_complete_byte_spans
     records: list[str],
 ) -> None:
     source = "\n".join(records)
-    parser = DeterministicParser(
-        [RegexPattern("record", r"^(?P<message>.*)$")], name="every-line"
-    )
+    parser = DeterministicParser([RegexPattern("record", r"^(?P<message>.*)$")], name="every-line")
     expected = await parser.parse(source, ParseContext(source_id="s"))
     observed = []
-    partitions = tuple(
+    partitions = await collect(
         LinePartitioner(max_lines=max_lines, max_bytes=max_bytes).partition(
             records, source_id="s", capabilities=parser.capabilities
         )
@@ -128,9 +128,7 @@ async def test_partition_boundaries_preserve_blank_lines_and_complete_byte_spans
                 event.with_evidence(
                     replace(
                         event.evidence,
-                        line_number=partition.start_line
-                        + event.evidence.line_number
-                        - 1,
+                        line_number=partition.start_line + event.evidence.line_number - 1,
                     )
                 )
             )

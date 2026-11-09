@@ -1,0 +1,45 @@
+{
+  "skill_name": "parsefabric-extend",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "files/vendor_audit/audit.log is our vendor's pipe-delimited audit format. Write a parsefabric parser for it so failed and denied actions become events with line evidence, make it safe to partition, and test it.",
+      "expected_output": "A Parser subclass (or DeterministicParser with patterns) emitting one event per AUDIT record with user, action, result and reason attributes, evidence with line numbers and byte offsets honouring context.source_offset, truthful capabilities including partition_framing='line', a version, and tests that pass check_parser and scripts/check_extension.py.",
+      "files": [
+        "files/vendor_audit/audit.log"
+      ],
+      "assertions": [
+        "The parser subclasses Parser (or builds a DeterministicParser) and declares name, version and capabilities",
+        "Events carry line_number, start_offset and end_offset, and offsets add context.source_offset",
+        "partitionable is declared together with partition_framing='line', and only with deterministic and parallel_safe",
+        "Malformed records are reported in ParseResult.errors rather than silently dropped",
+        "A test runs parsefabric.testing.check_parser on a realistic sample"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Write a parsefabric ObservabilitySink that sends lifecycle events to our Kafka topic `parse-events` with aiokafka, without slowing down parsing.",
+      "expected_output": "An ObservabilitySink subclass that buffers events in emit, sends batches in flush via an AIOKafkaProducer created by the application and injected, never raises from emit, closes by flushing, and a test using check_observability_sink with a fake producer.",
+      "files": [],
+      "assertions": [
+        "The class subclasses ObservabilitySink and implements async emit",
+        "emit does not await a network round trip for every event (buffering or a queue)",
+        "flush and close deliver buffered events; close is idempotent",
+        "The producer is injected or created by the application, not at import time",
+        "A test calls check_observability_sink"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We wrote a RayExecutionBackend for parsefabric but check_execution_backend fails with 'run must await coroutine functions'. Here is the run method: `async def run(self, function, *args, **kwargs): return ray.get(ray.remote(function).remote(*args, **kwargs))`. Fix it.",
+      "expected_output": "Explains that coroutine functions return a coroutine that must be awaited, and that ray.get blocks the event loop; awaits the ObjectRef (or offloads with asyncio.to_thread), handles coroutine functions by running them to completion in the worker, and re-runs check_execution_backend.",
+      "files": [],
+      "assertions": [
+        "Identifies that a coroutine function's result is not awaited",
+        "Replaces the blocking ray.get with an awaitable call (await the ObjectRef or asyncio.to_thread)",
+        "Keeps exceptions propagating unchanged",
+        "Re-runs check_execution_backend or scripts/check_extension.py to confirm"
+      ]
+    }
+  ]
+}

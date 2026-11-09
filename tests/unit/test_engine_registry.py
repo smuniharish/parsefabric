@@ -13,6 +13,7 @@ from parsefabric.aggregation import (
     EvidenceAggregator,
 )
 from parsefabric.builtins import ApplicationLogParser
+from parsefabric.builtins.application_log import default_patterns as application_log_patterns
 from parsefabric.capabilities import ParserCapabilities
 from parsefabric.engine import ParseEngine
 from parsefabric.errors import CapabilityError, DuplicateParserError
@@ -23,8 +24,8 @@ from parsefabric.observability import (
     ObservabilitySink,
     OpenTelemetryObservabilitySink,
 )
-from parsefabric.parser import AsyncParser, SemanticParser
-from parsefabric.registry import ParserRegistry
+from parsefabric.parser import AsyncParser, DeterministicParser, SemanticParser
+from parsefabric.registry import InMemoryParserRegistry
 from tests.support.parsers import StatefulSequenceParser
 
 
@@ -32,7 +33,7 @@ class RecordingSink(ObservabilitySink):
     def __init__(self) -> None:
         self.events: list[LifecycleEvent] = []
 
-    def emit(self, event: LifecycleEvent) -> None:
+    async def emit(self, event: LifecycleEvent) -> None:
         self.events.append(event)
 
 
@@ -46,9 +47,7 @@ async def test_cancelling_a_waiting_stream_reports_the_cancelled_stream() -> Non
             return ParseResult()
 
     sink = RecordingSink()
-    stream = ParseEngine(sink).parse_async_iter(
-        BlockingParser(name="blocked"), ["first", "second"]
-    )
+    stream = ParseEngine(sink).parse_async_iter(BlockingParser(name="blocked"), ["first", "second"])
 
     # The stream is suspended inside its own wait, so the cancellation of the
     # consumer is delivered to the stream rather than to a finished generator.
@@ -126,16 +125,17 @@ async def test_engine_reuses_events_when_evidence_is_already_complete(
     enriched = ParseEngine._enrich(parser, original, context)
     assert enriched == original
     assert all(
-        after is before
-        for before, after in zip(original.events, enriched.events, strict=True)
+        after is before for before, after in zip(original.events, enriched.events, strict=True)
     )
 
 
 def test_lifecycle_event_rejects_invalid_runtime_values() -> None:
     with pytest.raises(ValueError, match="timestamps"):
-        LifecycleEvent("ParseStarted", occurred_at=1)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        LifecycleEvent("ParseStarted", occurred_at=1)
     with pytest.raises(ValueError, match="attributes"):
-        LifecycleEvent("ParseStarted", attributes={"invalid": []})  # type: ignore[dict-item]
+        # pyrefly: ignore[bad-assignment]
+        LifecycleEvent("ParseStarted", attributes={"invalid": []})
 
 
 async def test_logging_sink_emits_structured_lifecycle_fields_without_input() -> None:
@@ -148,7 +148,7 @@ async def test_logging_sink_emits_structured_lifecycle_fields_without_input() ->
         attributes={"record_count": 1},
     )
     with capture_logs() as logs:
-        LoggingObservabilitySink().emit(event)
+        await LoggingObservabilitySink().emit(event)
         await ParseEngine(LoggingObservabilitySink()).parse(
             ApplicationLogParser(), "ERROR: private customer credential"
         )
@@ -165,12 +165,10 @@ async def test_logging_sink_emits_structured_lifecycle_fields_without_input() ->
     assert "private customer credential" not in str(logs)
 
 
-def test_logging_sink_accepts_application_configured_structlog_logger() -> None:
+async def test_logging_sink_accepts_application_configured_structlog_logger() -> None:
     capture = CapturingLogger()
-    logger = structlog.wrap_logger(
-        capture, processors=[structlog.processors.JSONRenderer()]
-    )
-    LoggingObservabilitySink(logger).emit(LifecycleEvent("ParseCompleted"))
+    logger = structlog.wrap_logger(capture, processors=[structlog.processors.JSONRenderer()])
+    await LoggingObservabilitySink(logger).emit(LifecycleEvent("ParseCompleted"))
 
     call = capture.calls[0]
     assert call.method_name == "info"
@@ -194,19 +192,31 @@ async def test_continue_on_error_is_explicit() -> None:
     assert tolerant.errors[0].error_type == "TypeError"
 
 
-def test_registry_duplicate_lookup_replace_and_remove() -> None:
-    registry = ParserRegistry()
+async def test_registry_duplicate_lookup_replace_and_remove() -> None:
+    registry = InMemoryParserRegistry()
     first = ApplicationLogParser()
-    registry.register(first)
-    assert registry.get(first.name) is first
-    assert registry.metadata(first.name).version == "1"
+    await registry.register(first)
+    assert await registry.get(first.name) is first
+    assert (await registry.metadata(first.name)).version == "1"
     with pytest.raises(DuplicateParserError):
-        registry.register(ApplicationLogParser())
+        await registry.register(ApplicationLogParser())
     replacement = ApplicationLogParser()
-    registry.register(replacement, replace=True)
-    assert registry.get(first.name) is replacement
-    assert registry.names() == (first.name,)
-    assert registry.unregister(first.name) is replacement
+    await registry.register(replacement, replace=True)
+    assert await registry.get(first.name) is replacement
+    assert await registry.names() == (first.name,)
+    assert await registry.unregister(first.name) is replacement
+
+
+async def test_registry_registers_batches_atomically() -> None:
+    registry = InMemoryParserRegistry()
+    first, second = DeterministicParser([], name="a"), DeterministicParser([], name="b")
+    with pytest.raises(DuplicateParserError, match="'a'"):
+        await registry.register_all((first, DeterministicParser([], name="a")), replace=True)
+    assert await registry.names() == ()
+    await registry.register_all((first, second))
+    with pytest.raises(DuplicateParserError, match="'b'"):
+        await registry.register_all((DeterministicParser([], name="c"), second))
+    assert await registry.names() == ("a", "b")
 
 
 @pytest.mark.asyncio
@@ -249,9 +259,7 @@ async def test_async_stream_bounds_outstanding_work() -> None:
 
     results = [
         result
-        async for result in ParseEngine().parse_async_iter(
-            parser, source(), max_concurrency=2
-        )
+        async for result in ParseEngine().parse_async_iter(parser, source(), max_concurrency=2)
     ]
     assert len(results) == 9
     assert parser.peak_active == 2
@@ -275,31 +283,32 @@ async def test_engine_checks_aggregation_capability_and_emits_events() -> None:
         await engine.aggregate(StatefulSequenceParser(), ())
 
 
-@pytest.mark.parametrize(
-    "member",
-    ["aggregator", "aggregate", "merge_aggregates", "serialize", "deserialize"],
-)
-def test_custom_parsers_cannot_override_package_managed_aggregation(member) -> None:
-    with pytest.raises(
-        TypeError, match="aggregation and serialization are managed by ParseFabric"
-    ):
-        type("Override", (ApplicationLogParser,), {member: lambda self: None})
-    with pytest.raises(TypeError, match="_build_aggregator"):
-        type("Hook", (ApplicationLogParser,), {"_build_aggregator": lambda self: None})
+async def test_custom_parsers_choose_their_aggregator() -> None:
+    class CountingParser(DeterministicParser[CountAggregate]):
+        def __init__(self) -> None:
+            super().__init__(application_log_patterns(), name="counting")
+
+        def build_aggregator(self) -> EventAggregator:
+            return EventAggregator(group_by=("message",))
+
+    parser = CountingParser()
+    engine = ParseEngine()
+    result = await engine.parse(parser, "ERROR: database timeout\nERROR: database timeout")
+    aggregates = await engine.aggregate(parser, result.events)
+    assert all(isinstance(item, CountAggregate) for item in aggregates)
+    assert {item.count for item in aggregates} == {2}
+    with pytest.raises(CapabilityError, match="lossy aggregator"):
+        await engine.materialize(parser, "ERROR: database timeout", aggregates)
 
 
 async def test_standalone_aggregators_group_parsed_events() -> None:
     parser = ApplicationLogParser()
     aggregator = EventAggregator(group_by=("message",))
-    left = await aggregator.aggregate(
-        (await parser.parse("ERROR: database timeout")).events
-    )
-    right = await aggregator.aggregate(
-        (await parser.parse("ERROR: database timeout")).events
-    )
+    left = await aggregator.aggregate((await parser.parse("ERROR: database timeout")).events)
+    right = await aggregator.aggregate((await parser.parse("ERROR: database timeout")).events)
     merged = await aggregator.merge((*left, *right))
     assert all(isinstance(item, CountAggregate) for item in merged)
-    assert [(item.event_type, item.key_attributes, item.count) for item in merged] == [  # type: ignore[attr-defined]
+    assert [(item.event_type, item.key_attributes, item.count) for item in merged] == [
         ("error", {"message": "database timeout"}, 2),
         ("timeout", {"message": "ERROR: database timeout"}, 2),
     ]
@@ -335,18 +344,12 @@ async def test_application_log_message_omits_separator_whitespace() -> None:
         "ERROR: database timeout\nWARNING: connection unstable"
     )
     assert (
-        next(
-            event.attributes["message"]
-            for event in result.events
-            if event.event_type == "error"
-        )
+        next(event.attributes["message"] for event in result.events if event.event_type == "error")
         == "database timeout"
     )
     assert (
         next(
-            event.attributes["message"]
-            for event in result.events
-            if event.event_type == "warning"
+            event.attributes["message"] for event in result.events if event.event_type == "warning"
         )
         == "connection unstable"
     )
@@ -365,7 +368,7 @@ async def test_opentelemetry_sink_attaches_event_to_active_span() -> None:
     sink = OpenTelemetryObservabilitySink(provider.get_tracer("parsefabric-tests"))
 
     with provider.get_tracer("test").start_as_current_span("parse-job"):
-        sink.emit(
+        await sink.emit(
             LifecycleEvent(
                 "PatternMatched",
                 parser_name="application-log",
@@ -383,7 +386,7 @@ async def test_opentelemetry_sink_attaches_event_to_active_span() -> None:
     assert attributes["parsefabric.parser.name"] == "application-log"
 
 
-def test_opentelemetry_sink_creates_event_span_without_parent() -> None:
+async def test_opentelemetry_sink_creates_event_span_without_parent() -> None:
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -394,7 +397,7 @@ def test_opentelemetry_sink_creates_event_span_without_parent() -> None:
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     sink = OpenTelemetryObservabilitySink(provider.get_tracer("parsefabric-tests"))
-    sink.emit(LifecycleEvent("ParseCompleted", attributes={"event_count": 3}))
+    await sink.emit(LifecycleEvent("ParseCompleted", attributes={"event_count": 3}))
 
     spans = exporter.get_finished_spans()
     assert spans[0].name == "parsefabric.lifecycle"
@@ -434,7 +437,8 @@ async def test_async_parser_cannot_be_instantiated_without_parse() -> None:
     import pytest
 
     with pytest.raises(TypeError, match="Can't instantiate abstract class"):
-        IncompleteAsyncParser()  # type: ignore[abstract]
+        # pyrefly: ignore[bad-instantiation]
+        IncompleteAsyncParser()
 
 
 async def test_parsers_get_the_package_aggregator_by_default() -> None:

@@ -1,20 +1,14 @@
 input lines: 66 statements: 25
 aggregate: sql_statement count: 25
-  3 x [2, 7, 12] select shop.orders
-  2 x [17, 18] update shop.orders
-  2 x [20, 22] insert shop.audit_events
-  1 x [25] select shop.audit_events
-  1 x [31] insert shop.audit_events
+  7 x [2, 7, 12, 44, 45, 62, 63] select shop.orders
+  5 x [17, 18, 47, 48, 49] update shop.orders
+  5 x [20, 22, 31, 51, 53] insert shop.audit_events
+  3 x [25, 56, 57] select shop.audit_events
   1 x [34] select shop.customers,shop.orders
-  2 x [44, 45] select shop.orders
-  3 x [47, 48, 49] update shop.orders
-  2 x [51, 53] insert shop.audit_events
-  2 x [56, 57] select shop.audit_events
   2 x [59, 60] delete shop.audit_events
-  2 x [62, 63] select shop.orders
   1 x [65] update shop.customers
   1 x [66] select shop.customers
-bytes: 2074 -> 1332 (35.8% smaller)
+bytes: 2074 -> 936 (54.9% smaller)
 materialized: 25 lossless: True
  statement: 1 select ['shop.orders'] line: 2 sql: SELECT o.id, o.total_cents FROM shop.orders AS o WHERE o.status = 'pending' ORDER BY o.id
  statement: 2 select ['shop.orders'] line: 7 sql: SELECT o.id, o.total_cents FROM shop.orders AS o WHERE o.status = 'pending' ORDER BY o.id

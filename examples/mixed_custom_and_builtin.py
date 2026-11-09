@@ -11,10 +11,10 @@ from __future__ import annotations
 import asyncio
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from custom_sql import SQLStatementParser
 
-from parsefabric.aggregation import EvidenceAggregate
 from parsefabric.builtins import (
     ApplicationLogParser,
     CLIOutputParser,
@@ -26,6 +26,9 @@ from parsefabric.compression import measure_compression
 from parsefabric.engine import ParseEngine
 from parsefabric.models import ParseContext, ParseResult
 from parsefabric.patterns import RegexPattern
+
+if TYPE_CHECKING:
+    from parsefabric.aggregation import EvidenceAggregate
 
 _DATA = Path(__file__).resolve().parent / "data"
 _BRACKETED_LOG = r"^\[(?P<at>[^\]]+)\] \[(?P<level>[A-Z]+)\] (?P<message>.+)$"
@@ -113,9 +116,7 @@ async def parse_file(
     return parser, result, source
 
 
-async def report(
-    filename: str, *, timestamped: bool, custom_log_format: bool = False
-) -> None:
+async def report(filename: str, *, timestamped: bool, custom_log_format: bool = False) -> None:
     parser, result, source = await parse_file(
         filename, timestamped=timestamped, custom_log_format=custom_log_format
     )
@@ -132,14 +133,12 @@ async def report(
     )
     print("aggregates:", len(documents))
     print_groups(documents)
-    metrics = measure_compression(source, parser.serialize(documents))
+    metrics = await measure_compression(source, await engine.serialize(documents))
     print("bytes:", metrics.input_bytes, "->", metrics.output_bytes)
     restored = await engine.materialize(parser, source, documents)
     print("lossless:", restored == result.events)
     sql_events = tuple(
-        event
-        for event in result.events
-        if event.evidence.parser_name == "sql-statements"
+        event for event in result.events if event.evidence.parser_name == "sql-statements"
     )
     print(
         "SQL event lines:",

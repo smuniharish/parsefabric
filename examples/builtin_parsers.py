@@ -38,9 +38,7 @@ OPERATIONS_LOG = """\
 async def main() -> None:
     engine = ParseEngine()
 
-    order = await engine.parse(
-        JSONParser(), '{"order": 1042, "status": "paid", "total": 99.5}'
-    )
+    order = await engine.parse(JSONParser(), '{"order": 1042, "status": "paid", "total": 99.5}')
     print("json:", order.events[0].event_type, order.events[0].attributes["value"])
 
     invalid = await engine.parse(JSONParser(), '{"order": 1042,')

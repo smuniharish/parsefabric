@@ -75,9 +75,7 @@ def escaped_boundary_records() -> list[tuple[str, ParseContext]]:
 def verify_results(output: Path, records: list[tuple[str, ParseContext]]) -> int:
     actual: list[ParseResult] = read_results(output, len(records))
     if len(actual) != len(records):
-        raise AssertionError(
-            f"Flink returned {len(actual)} records; expected {len(records)}"
-        )
+        raise AssertionError(f"Flink returned {len(actual)} records; expected {len(records)}")
     parser = mixed_parser()
     expected = [run_sync(parser.parse(source, context)) for source, context in records]
     if actual != expected:
@@ -96,40 +94,22 @@ def verify_results(output: Path, records: list[tuple[str, ParseContext]]) -> int
     summary = {
         "records": len(actual),
         "events": len(events),
-        "event_types": dict(
-            sorted(Counter(event.event_type for event in events).items())
-        ),
+        "event_types": dict(sorted(Counter(event.event_type for event in events).items())),
         "provenance": {
-            "source_ids": sorted(
-                {item.source_id for item in evidence if item.source_id}
-            ),
-            "parser_names": sorted(
-                {item.parser_name for item in evidence if item.parser_name}
-            ),
-            "pattern_names": sorted(
-                {item.pattern_name for item in evidence if item.pattern_name}
-            ),
-            "partition_ids": sorted(
-                {item.partition_id for item in evidence if item.partition_id}
-            ),
+            "source_ids": sorted({item.source_id for item in evidence if item.source_id}),
+            "parser_names": sorted({item.parser_name for item in evidence if item.parser_name}),
+            "pattern_names": sorted({item.pattern_name for item in evidence if item.pattern_name}),
+            "partition_ids": sorted({item.partition_id for item in evidence if item.partition_id}),
             "correlation_ids": sorted(
                 {item.correlation_id for item in evidence if item.correlation_id}
             ),
             "offset_range": [
                 min(
-                    (
-                        item.start_offset
-                        for item in evidence
-                        if item.start_offset is not None
-                    ),
+                    (item.start_offset for item in evidence if item.start_offset is not None),
                     default=None,
                 ),
                 max(
-                    (
-                        item.end_offset
-                        for item in evidence
-                        if item.end_offset is not None
-                    ),
+                    (item.end_offset for item in evidence if item.end_offset is not None),
                     default=None,
                 ),
             ],

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from importlib import import_module
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from examples.integrations.json_contract import decode_json as _decode
 from examples.integrations.mixed_job import mixed_parser
@@ -17,6 +17,9 @@ from examples.integrations.sync_bridge import run_sync
 from parsefabric.builtins import ApplicationLogParser
 from parsefabric.models import ParseContext, ParseResult
 from parsefabric.serialization import dumps_result, loads_result
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 FLINK_VERSION = "2.3.0"
 MAX_RECORDS = 32
@@ -26,9 +29,7 @@ MAX_RESULT_BYTES = 1_048_576
 # The envelope escapes the result JSON again; allow up to two bytes per byte.
 MAX_OUTPUT_ROW_BYTES = 2 * MAX_RESULT_BYTES + 64
 MAX_OUTPUT_BYTES = MAX_RECORDS * MAX_OUTPUT_ROW_BYTES
-_CONTEXT_FIELDS = frozenset(
-    ("source_id", "correlation_id", "partition_id", "source_offset")
-)
+_CONTEXT_FIELDS = frozenset(("source_id", "correlation_id", "partition_id", "source_offset"))
 _JOB_FIELDS = frozenset(
     ("schema_version", "parser_name", "parser_version", "index", "source", "context")
 )
@@ -49,11 +50,7 @@ def _validate_job(job: object) -> tuple[int, str, ParseContext, str]:
     ):
         raise ValueError("unsupported parser or job schema version")
     index = job["index"]
-    if (
-        not isinstance(index, int)
-        or isinstance(index, bool)
-        or not 0 <= index < MAX_RECORDS
-    ):
+    if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < MAX_RECORDS:
         raise ValueError("invalid record index")
     source = job["source"]
     if not isinstance(source, str) or len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
@@ -72,11 +69,7 @@ def encode_jobs(
         raise ValueError(f"bounded Flink stream requires 1..{MAX_RECORDS} records")
     payloads: list[str] = []
     for index, item in enumerate(records):
-        if (
-            not isinstance(item, tuple)
-            or len(item) != 2
-            or not isinstance(item[1], ParseContext)
-        ):
+        if not isinstance(item, tuple) or len(item) != 2 or not isinstance(item[1], ParseContext):
             raise ValueError("each record must contain source and ParseContext")
         job = {
             "schema_version": "1",
@@ -108,11 +101,7 @@ def parse_record(payload: str) -> str:
 
 def read_results(directory: Path, count: int) -> list[ParseResult]:
     """Read finalized bounded FileSink parts, rejecting missing/duplicate output."""
-    if (
-        not isinstance(count, int)
-        or isinstance(count, bool)
-        or not 1 <= count <= MAX_RECORDS
-    ):
+    if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= MAX_RECORDS:
         raise ValueError("invalid result count")
     results: dict[int, ParseResult] = {}
     total = 0

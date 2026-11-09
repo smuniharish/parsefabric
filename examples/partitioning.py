@@ -15,12 +15,10 @@ from parsefabric.partitioning import LinePartitioner, Partition
 SOURCE_ID = "application.log"
 
 
-def parse_partition(partition: Partition) -> tuple[int, ParseResult]:
+async def parse_partition(partition: Partition) -> tuple[int, ParseResult]:
     """Parse one partition in a worker process; offsets stay document-relative."""
-    context = ParseContext(
-        source_id=partition.source_id, source_offset=partition.start_offset
-    )
-    result = asyncio.run(ApplicationLogParser().parse(partition.content, context))
+    context = ParseContext(source_id=partition.source_id, source_offset=partition.start_offset)
+    result = await ApplicationLogParser().parse(partition.content, context)
     return partition.start_line, result
 
 
@@ -40,15 +38,15 @@ def rebase(start_line: int, result: ParseResult) -> list[ParsedEvent]:
 async def parse_partitioned(lines: Iterable[str]) -> tuple[int, list[ParsedEvent]]:
     """Parse ``lines`` partition by partition and check the whole-document result."""
     parser = ApplicationLogParser()
-    partitions = tuple(
-        LinePartitioner(max_lines=500).partition(
+    partitions = [
+        partition
+        async for partition in LinePartitioner(max_lines=500).partition(
             lines, source_id=SOURCE_ID, capabilities=parser.capabilities
         )
-    )
+    ]
     async with ProcessExecutionBackend(max_workers=2) as backend:
         completed = [
-            item
-            async for item in backend.map(parse_partition, partitions, max_in_flight=4)
+            item async for item in backend.map(parse_partition, partitions, max_in_flight=4)
         ]
     events = [
         event

@@ -1,0 +1,3 @@
+# Contract checks
+
+::: parsefabric.testing

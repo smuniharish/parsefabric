@@ -2,29 +2,71 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import override
 
 __all__ = [
+    "DEFAULT_TOKENIZER",
+    "ApproximateTokenizer",
     "CompressionMetrics",
-    "TokenEstimator",
-    "estimate_tokens",
+    "Tokenizer",
     "measure_compression",
 ]
 
-type TokenEstimator = Callable[[str], int]
+
+class Tokenizer(ABC):
+    """Count the tokens of a text, for example with a model's own tokenizer.
+
+    Subclasses implement `count`. `count_bytes` decodes UTF-8 with
+    replacement characters and counts the text; override it to count raw
+    bytes directly.
+    """
+
+    @abstractmethod
+    async def count(self, text: str) -> int:
+        """Return the number of tokens in ``text``."""
+
+    async def count_bytes(self, data: bytes) -> int:
+        """Return the number of tokens in encoded ``data``."""
+        return await self.count(data.decode("utf-8", errors="replace"))
 
 
-def estimate_tokens(text: str) -> int:
-    """Approximate tokens as one per four UTF-8 bytes, rounded up.
+class ApproximateTokenizer(Tokenizer):
+    """Approximate tokens from the UTF-8 size, rounded up.
 
     Args:
-        text: Text to measure.
+        bytes_per_token: Average number of bytes in one token.
 
-    Returns:
-        The estimated token count.
+    Raises:
+        ValueError: If ``bytes_per_token`` is not a positive integer.
     """
-    return -(-len(text.encode("utf-8", errors="surrogatepass")) // 4)
+
+    def __init__(self, bytes_per_token: int = 4) -> None:
+        if (
+            isinstance(bytes_per_token, bool)
+            or not isinstance(bytes_per_token, int)
+            or bytes_per_token < 1
+        ):
+            raise ValueError("bytes_per_token must be a positive integer")
+        self._bytes_per_token = bytes_per_token
+
+    @property
+    def bytes_per_token(self) -> int:
+        """Average number of bytes in one token."""
+        return self._bytes_per_token
+
+    @override
+    async def count(self, text: str) -> int:
+        return await self.count_bytes(text.encode("utf-8", errors="surrogatepass"))
+
+    @override
+    async def count_bytes(self, data: bytes) -> int:
+        return -(-len(data) // self._bytes_per_token)
+
+
+DEFAULT_TOKENIZER = ApproximateTokenizer()
+"""One token per four UTF-8 bytes; the default of `measure_compression`."""
 
 
 def _percent(saved: int, total: int) -> float | None:
@@ -41,8 +83,8 @@ class CompressionMetrics:
         bytes_saved: ``input_bytes - output_bytes``.
         reduction_percent: Bytes saved as a percentage of the input, or
             ``None`` for an empty input.
-        input_tokens: Estimated tokens in the source.
-        output_tokens: Estimated tokens in the output.
+        input_tokens: Tokens in the source.
+        output_tokens: Tokens in the output.
         tokens_saved: ``input_tokens - output_tokens``.
         token_reduction_percent: Tokens saved as a percentage of the input
             tokens, or ``None`` when the input has no tokens.
@@ -58,52 +100,44 @@ class CompressionMetrics:
     token_reduction_percent: float | None
 
 
-def _measure(
-    value: str | bytes, name: str, estimator: TokenEstimator | None
-) -> tuple[int, int]:
+async def _measure(value: str | bytes, name: str, tokenizer: Tokenizer) -> tuple[int, int]:
     if isinstance(value, bytes):
-        size = len(value)
-        if estimator is None:
-            return size, -(-size // 4)
-        return size, estimator(value.decode("utf-8", errors="replace"))
+        return len(value), await tokenizer.count_bytes(value)
     if isinstance(value, str):
-        return len(value.encode("utf-8", errors="surrogatepass")), (
-            estimator or estimate_tokens
-        )(value)
+        return len(value.encode("utf-8", errors="surrogatepass")), await tokenizer.count(value)
     raise TypeError(f"{name} must be str or bytes")
 
 
-def measure_compression(
+async def measure_compression(
     source: str | bytes,
     output: str | bytes,
     *,
-    token_estimator: TokenEstimator | None = None,
+    tokenizer: Tokenizer = DEFAULT_TOKENIZER,
 ) -> CompressionMetrics:
     """Compare a source with the output an application produced from it.
 
     ParseFabric aggregates are in-memory objects; how they are encoded for
     storage or transport is the application's choice, so ``output`` is the
-    already-encoded result, typically ``parser.serialize(aggregates)``.
-    Verify losslessness with
-    `parsefabric.engine.ParseEngine.materialize` before relying on the
-    reduction.
+    already-encoded result, typically ``await engine.serialize(aggregates)``.
+    Verify losslessness with `parsefabric.engine.ParseEngine.materialize`
+    before relying on the reduction.
 
     Args:
         source: The original input; text is measured as UTF-8.
         output: The encoded output.
-        token_estimator: Function returning the token count of a text.
-            Defaults to `estimate_tokens`. Bytes that are not valid
-            UTF-8 are decoded with replacement characters before a custom
-            estimator sees them.
+        tokenizer: Counts tokens; defaults to `DEFAULT_TOKENIZER`.
 
     Returns:
         The size comparison.
 
     Raises:
-        TypeError: If ``source`` or ``output`` is not text or bytes.
+        TypeError: If ``source`` or ``output`` is not text or bytes, or
+            ``tokenizer`` is not a `Tokenizer`.
     """
-    input_bytes, input_tokens = _measure(source, "source", token_estimator)
-    output_bytes, output_tokens = _measure(output, "output", token_estimator)
+    if not isinstance(tokenizer, Tokenizer):
+        raise TypeError("tokenizer must be a Tokenizer")
+    input_bytes, input_tokens = await _measure(source, "source", tokenizer)
+    output_bytes, output_tokens = await _measure(output, "output", tokenizer)
     saved = input_bytes - output_bytes
     tokens_saved = input_tokens - output_tokens
     return CompressionMetrics(

@@ -69,7 +69,7 @@ async def test_sql_fixture_preserves_operations_order_tables_and_evidence() -> N
     ]
     messages = {
         f"{event.attributes['operation']} "
-        + ",".join(str(table) for table in event.attributes["tables"])  # type: ignore[union-attr]
+        + ",".join(str(table) for table in event.attributes["tables"])  # pyrefly: ignore[not-iterable]
         for event in result.events
     }
     assert {entry.message for entry in group.evidence} == messages
@@ -159,11 +159,7 @@ async def test_repeated_sql_references_round_trip_queries() -> None:
     ordered = await parser.parse(separated, ParseContext(source_id="shop.sql"))
     (aggregate,) = await parser.aggregate(ordered.events)
     update = "update shop.orders"
-    assert rows(aggregate) == [
-        (None, select, "1,2", 2),
-        (None, update, "3", 1),
-        (None, select, "4", 1),
-    ]
+    assert rows(aggregate) == [(None, select, "1,2,4", 3), (None, update, "3", 1)]
     assert [event.attributes["operation"] for event in ordered.events] == [
         "select",
         "select",
@@ -174,8 +170,7 @@ async def test_repeated_sql_references_round_trip_queries() -> None:
 
 def test_describe_statement_normalizes_operation_tables_and_sql() -> None:
     described = custom_sql.describe_statement(
-        "SELECT o.id, o.total_cents FROM shop.orders AS o "
-        "WHERE o.status = 'pending' ORDER BY o.id"
+        "SELECT o.id, o.total_cents FROM shop.orders AS o WHERE o.status = 'pending' ORDER BY o.id"
     )
     assert described == {
         "message": "select shop.orders",
@@ -204,6 +199,4 @@ async def test_sql_materialize_round_trips_fixture_and_edge_sources() -> None:
         assert [event.attributes["sql"] for event in restored] == [
             event.attributes["sql"] for event in result.events
         ]
-        assert sum(entry.occurrences for entry in document.groups[0].evidence) == len(
-            result.events
-        )
+        assert sum(entry.occurrences for entry in document.groups[0].evidence) == len(result.events)

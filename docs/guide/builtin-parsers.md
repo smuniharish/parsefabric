@@ -75,9 +75,7 @@ parser = ApplicationLogParser(
 
 
 async def main() -> None:
-    result = await ParseEngine().parse(
-        parser, "write failed: No space left on device /dev/sdb1\n"
-    )
+    result = await ParseEngine().parse(parser, "write failed: No space left on device /dev/sdb1\n")
     for event in result.events:
         print(event.event_type, event.severity, event.attributes)
 
@@ -114,9 +112,7 @@ parser = TimestampedLogParser(
 
 
 async def main() -> None:
-    result = await ParseEngine().parse(
-        parser, "[2026-10-01T08:00:03+00:00] ERROR: disk failing\n"
-    )
+    result = await ParseEngine().parse(parser, "[2026-10-01T08:00:03+00:00] ERROR: disk failing\n")
     (event,) = result.events
     print(event.timestamp.isoformat(), event.severity, event.attributes["message"])
 
@@ -151,29 +147,44 @@ event with `exception_type`, `message` and `frames` attributes; each frame has
 
 `CLIOutputParser` works in one of two modes:
 
-- **jc mode.** `CLIOutputParser(command="df")` parses the whole output with
-  the [jc](https://github.com/kellyjonbrazil/jc) parser of that name. Each
-  record becomes a `cli_record` event whose attributes are the record. Output
-  that jc rejects becomes an `unparsed` event plus a `ParseIssue`, and
-  non-blank output in which jc finds no records produces a warning. Run
-  `python -c "import jc; print(jc.parser_mod_list())"` to list the available
-  commands; streaming parsers (names ending in `_s`) are not supported.
+- **Command mode.** `CLIOutputParser(command="df")` parses the whole output
+  with a `CommandOutputBackend`. Each record becomes a `cli_record` event
+  whose attributes are the record. Output that the backend rejects becomes an
+  `unparsed` event plus a `ParseIssue`, and non-blank output in which it finds
+  no records produces a warning.
 - **Pattern mode.** `CLIOutputParser([pattern, ...])` matches every line
   against your patterns, like a [`DeterministicParser`](custom-parsers.md).
 
+The default `JcBackend` uses the [jc](https://github.com/kellyjonbrazil/jc)
+parser named by `command` and runs it in a worker thread. Run
+`python -c "import jc; print(jc.parser_mod_list())"` to list the available
+commands; streaming parsers (names ending in `_s`) are not supported. To parse
+command output with another library or service, subclass
+`CommandOutputBackend`, implement `name`, `validate` and the async `parse`,
+and pass it as `CLIOutputParser(command=..., backend=...)`; see
+[Command output backends](../extending/command-output-backends.md).
+
 ## Detect code
 
-`CodeDetector` reports which tree-sitter grammar, if any, parses a block of
-text as code. `MixedContentParser` uses it for lines that no route or pattern
-claims, and you can use it on its own:
+`TreeSitterCodeDetector` reports which tree-sitter grammar, if any, parses a
+block of text as code. `MixedContentParser` asks its `code_detector` about
+lines that no route or pattern claims, and you can use a detector on its own:
 
 ```python
-from parsefabric.builtins import CodeDetector
+import asyncio
 
-detector = CodeDetector()
-print(detector.detect("def charge(order):\n    return gateway.charge(order)"))
-print(detector.detect("SELECT id FROM orders WHERE total > 10"))
-print(detector.detect("the payment failed again"))
+from parsefabric.builtins import TreeSitterCodeDetector
+
+
+async def main() -> None:
+    detector = TreeSitterCodeDetector()
+    await detector.prepare()
+    print(await detector.detect("def charge(order):\n    return gateway.charge(order)"))
+    print(await detector.detect("SELECT id FROM orders WHERE total > 10"))
+    print(await detector.detect("the payment failed again"))
+
+
+asyncio.run(main())
 ```
 
 Output:
@@ -187,6 +198,12 @@ None
 The default languages are `DEFAULT_CODE_LANGUAGES`: Python, JavaScript,
 TypeScript, Java, Go, Rust, C, C++ and SQL, tried in that order. Grammars that
 accept ordinary prose, such as Bash or Ruby, are rejected because they would
-classify plain sentences as code. Missing grammars are downloaded when the
-detector is created; see
-[Installation](../getting-started/installation.md#code-detection-grammars).
+classify plain sentences as code. Missing grammars are downloaded in a worker
+thread by `prepare()`, which runs automatically before the first detection;
+see [Installation](../getting-started/installation.md#code-detection-grammars).
+
+To use another detector, such as a classifier model, subclass `CodeDetector`,
+implement `async detect(text)` (and optionally `async prepare()`), and pass it
+as `MixedContentParser(code_detector=...)`; see
+[Code detectors](../extending/code-detectors.md). `code_detector=None`
+disables detection.

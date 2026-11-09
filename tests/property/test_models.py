@@ -83,7 +83,7 @@ def test_copy_json_returns_an_equal_independent_value(value: Any) -> None:
 
 @given(st.integers(min_value=MAX_JSON_DEPTH + 1, max_value=MAX_JSON_DEPTH + 50))
 def test_copy_json_rejects_values_nested_too_deeply(depth: int) -> None:
-    value: Any = []
+    value: list[object] = []
     for _ in range(depth - 1):
         value = [value]
     with pytest.raises(ValueError, match="nests deeper"):
@@ -120,15 +120,11 @@ def test_mutated_result_documents_are_rejected_or_valid(
     except SerializationError:
         return
     assert mutation == "retype"
-    assert dumps_result(decoded) == json.dumps(
-        document, ensure_ascii=False, separators=(",", ":")
-    )
+    assert dumps_result(decoded) == json.dumps(document, ensure_ascii=False, separators=(",", ":"))
 
 
 @given(st.dictionaries(NAMES, st.integers(), min_size=1, max_size=4), st.data())
-def test_strict_decoder_rejects_duplicate_keys(
-    fields: dict[str, int], data: st.DataObject
-) -> None:
+def test_strict_decoder_rejects_duplicate_keys(fields: dict[str, int], data: st.DataObject) -> None:
     key = data.draw(st.sampled_from(sorted(fields)))
     body = ",".join(f"{json.dumps(name)}:{value}" for name, value in fields.items())
     with pytest.raises(ValueError, match="duplicate"):

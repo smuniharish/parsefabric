@@ -30,7 +30,7 @@ SOURCE = "\n".join(
 )
 
 
-async def test_dependent_log_runs_group_by_level_and_keep_timestamps() -> None:
+async def test_logs_group_by_level_and_message_and_keep_timestamps() -> None:
     parser = TimestampedLogParser()
     context = ParseContext(source_id="app.log", source_offset=9)
     engine = ParseEngine()
@@ -40,12 +40,9 @@ async def test_dependent_log_runs_group_by_level_and_keep_timestamps() -> None:
     assert document.count == 10
     assert (document.source_id, document.parser_name) == ("app.log", "timestamped-log")
     assert rows(document) == [
-        ("INFO", "started", "1,2", 2),
-        ("INFO", "started", "5,6", 2),
-        ("INFO", "started", "9", 1),
+        ("INFO", "started", "1,2,5,6,9", 5),
         ("DEBUG", "checking", "3,4", 2),
-        ("ERROR", "timeout", "7,8", 2),
-        ("ERROR", "timeout", "10", 1),
+        ("ERROR", "timeout", "7,8,10", 3),
     ]
     assert document.first_seen is not None
     assert document.last_seen is not None
@@ -100,17 +97,9 @@ async def test_large_mixed_fixture_routes_logs_into_one_grouped_aggregate(
 ) -> None:
     source = example_data("incident-mixed.log")
     log_parser = TimestampedLogParser()
-    mixed = MixedContentParser(
-        routes=[(RegexPattern("log-line", r"^\d{4}-"), log_parser)]
-    )
-    result = await ParseEngine().parse(
-        mixed, source, ParseContext(source_id="incident-mixed.log")
-    )
-    logs = tuple(
-        event
-        for event in result.events
-        if event.evidence.parser_name == log_parser.name
-    )
+    mixed = MixedContentParser(routes=[(RegexPattern("log-line", r"^\d{4}-"), log_parser)])
+    result = await ParseEngine().parse(mixed, source, ParseContext(source_id="incident-mixed.log"))
+    logs = tuple(event for event in result.events if event.evidence.parser_name == log_parser.name)
     (document,) = await ParseEngine().aggregate(log_parser, logs)
     assert document.count == 510
     assert (document.source_id, document.parser_name) == (
@@ -125,7 +114,7 @@ async def test_large_mixed_fixture_routes_logs_into_one_grouped_aggregate(
     assert len(entries) < 510
 
 
-async def test_filtered_logs_split_runs_at_source_gaps() -> None:
+async def test_filtered_logs_keep_source_positions() -> None:
     logs = TimestampedLogParser()
     mixed = MixedContentParser(routes=[(RegexPattern("log-line", r"^\d{4}-"), logs)])
     source = (
@@ -137,11 +126,8 @@ async def test_filtered_logs_split_runs_at_source_gaps() -> None:
     (document,) = await logs.aggregate(
         event for event in result.events if event.evidence.parser_name == logs.name
     )
-    # The unrouted note between them breaks the run.
-    assert rows(document) == [
-        ("ERROR", "timeout", "1", 1),
-        ("ERROR", "timeout", "3", 1),
-    ]
+    # Positions skip the unrouted note between them.
+    assert rows(document) == [("ERROR", "timeout", "1,3", 2)]
     assert document.count == 2
 
 
@@ -183,16 +169,12 @@ async def test_custom_log_format_is_configurable_in_mixed_routes() -> None:
     ]
     documents = await mixed.aggregate(result.events)
     assert [(document.event_type, rows(document)) for document in documents] == [
-        ("log", [("ERROR", "queue lag", "1,2", 2), ("ERROR", "queue lag", "4", 1)]),
+        ("log", [("ERROR", "queue lag", "1,2,4", 3)]),
         ("other", [(None, {"text": '{"state":"investigating"}'}, "3", 1)]),
     ]
     restored = await ParseEngine().materialize(mixed, source, documents, context)
     assert restored == result.events
-    assert [
-        event.attributes["message"]
-        for event in restored
-        if "message" in event.attributes
-    ] == [
+    assert [event.attributes["message"] for event in restored if "message" in event.attributes] == [
         "queue lag",
         "queue lag",
         "queue lag",
@@ -200,24 +182,21 @@ async def test_custom_log_format_is_configurable_in_mixed_routes() -> None:
     (logs_document,) = await logs.aggregate(
         event for event in result.events if event.evidence.parser_name == logs.name
     )
-    assert rows(logs_document) == [
-        ("ERROR", "queue lag", "1,2", 2),
-        ("ERROR", "queue lag", "4", 1),
-    ]
-    assert isinstance(
-        TimestampedLogParser(line_pattern=pattern.pattern), TimestampedLogParser
-    )
+    assert rows(logs_document) == [("ERROR", "queue lag", "1,2,4", 3)]
+    assert isinstance(TimestampedLogParser(line_pattern=pattern.pattern), TimestampedLogParser)
 
 
 def test_custom_log_format_rejects_incomplete_or_non_text_patterns() -> None:
     with pytest.raises(ValueError, match="at, level, and message"):
         TimestampedLogParser(line_pattern=r"(?P<message>.+)")
     with pytest.raises(TypeError, match="line_pattern"):
-        TimestampedLogParser(line_pattern=3)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        TimestampedLogParser(line_pattern=3)
     with pytest.raises(TypeError, match="text regex"):
         TimestampedLogParser(
-            line_pattern=re.compile(b"(?P<at>x)(?P<level>x)(?P<message>x)")  # type: ignore[arg-type]
-        )  # type: ignore[arg-type]
+            # pyrefly: ignore[bad-argument-type]
+            line_pattern=re.compile(b"(?P<at>x)(?P<level>x)(?P<message>x)")
+        )
 
 
 async def test_builtin_pattern_collections_can_override_log_recognition() -> None:
@@ -240,13 +219,9 @@ async def test_builtin_pattern_collections_can_override_log_recognition() -> Non
     assert document.groups[0].pattern == "bracketed"
 
     application = ApplicationLogParser(
-        patterns=[
-            RegexPattern(
-                "queue", r"^QUEUE (?P<message>.+)$", event_type="queue_warning"
-            )
-        ]
+        patterns=[RegexPattern("queue", r"^QUEUE (?P<message>.+)$", event_type="queue_warning")]
     )
     events = (await application.parse("QUEUE delayed")).events
     assert [(event.event_type, event.attributes) for event in events] == [
         ("queue_warning", {"message": "delayed"})
-    ]  # type: ignore[arg-type]
+    ]

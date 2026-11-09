@@ -10,7 +10,7 @@ from parsefabric.errors import IntegrityError
 from parsefabric.models import ParsedEvent
 
 
-class RoutingAggregator(Aggregator):
+class RoutingAggregator(Aggregator[Aggregate]):
     """Aggregate each event with the aggregator of the parser that produced it.
 
     Composite parsers such as
@@ -29,7 +29,9 @@ class RoutingAggregator(Aggregator):
     """
 
     def __init__(
-        self, default: Aggregator, routes: Mapping[str, Aggregator] | None = None
+        self,
+        default: Aggregator[Aggregate],
+        routes: Mapping[str, Aggregator[Aggregate]] | None = None,
     ) -> None:
         if not isinstance(default, Aggregator):
             raise TypeError("default must be an Aggregator")
@@ -42,22 +44,22 @@ class RoutingAggregator(Aggregator):
             raise TypeError("routes must map parser names to Aggregator instances")
 
     @property
-    def default(self) -> Aggregator:
+    def default(self) -> Aggregator[Aggregate]:
         """Aggregator for events whose parser has no dedicated route."""
         return self._default
 
     @property
-    def routes(self) -> Mapping[str, Aggregator]:
+    def routes(self) -> Mapping[str, Aggregator[Aggregate]]:
         """Copy of the parser-name to aggregator routing table."""
         return dict(self._routes)
 
     def _key(self, parser_name: str | None) -> str | None:
         return parser_name if parser_name in self._routes else None
 
-    def _aggregator(self, key: str | None) -> Aggregator:
+    def _aggregator(self, key: str | None) -> Aggregator[Aggregate]:
         return self._default if key is None else self._routes[key]
 
-    def _children(self) -> tuple[Aggregator, ...]:
+    def _children(self) -> tuple[Aggregator[Aggregate], ...]:
         return (self._default, *self._routes.values())
 
     @property
@@ -115,9 +117,7 @@ class RoutingAggregator(Aggregator):
         for key in dict.fromkeys((*grouped, *given)):
             aggregator = self._aggregator(key)
             if aggregator.requires_source and events is None:
-                raise IntegrityError(
-                    "a routed aggregator requires the events of a fresh re-parse"
-                )
+                raise IntegrityError("a routed aggregator requires the events of a fresh re-parse")
             partitions.append(
                 await aggregator.materialize(
                     grouped.get(key, ()),
@@ -131,9 +131,7 @@ class RoutingAggregator(Aggregator):
         if len(partitions) <= 1:
             return tuple(rebuilt)
         if any(event.evidence.line_number is None for event in rebuilt):
-            raise IntegrityError(
-                "events from several parsers need line numbers to restore order"
-            )
+            raise IntegrityError("events from several parsers need line numbers to restore order")
         return tuple(
             sorted(
                 rebuilt,

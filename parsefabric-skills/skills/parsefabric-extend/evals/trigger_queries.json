@@ -1,0 +1,25 @@
+{
+  "skill_name": "parsefabric-extend",
+  "queries": [
+    {"query": "write a parsefabric Parser for our pipe-delimited vendor audit log", "should_trigger": true, "split": "train"},
+    {"query": "our custom parsefabric parser fails check_parser with 'materialize must rebuild exactly the parsed events'", "should_trigger": true, "split": "train"},
+    {"query": "store parsefabric aggregates as MessagePack with a custom AggregateCodec", "should_trigger": true, "split": "train"},
+    {"query": "implement a parsefabric ExecutionBackend on Dask", "should_trigger": true, "split": "train"},
+    {"query": "publish parsefabric lifecycle events to Kafka with a custom sink", "should_trigger": true, "split": "train"},
+    {"query": "connect parsefabric summaries to Anthropic without langchain by subclassing LanguageModel", "should_trigger": true, "split": "train"},
+    {"query": "back the parsefabric parser registry with Redis", "should_trigger": true, "split": "validation"},
+    {"query": "use tiktoken to count tokens in parsefabric's compression metrics", "should_trigger": true, "split": "validation"},
+    {"query": "replace tree-sitter code detection in MixedContentParser with our own classifier", "should_trigger": true, "split": "validation"},
+    {"query": "which capabilities should my parsefabric parser declare to be partitionable?", "should_trigger": true, "split": "validation"},
+    {"query": "parse application logs with parsefabric and keep line evidence", "should_trigger": false, "split": "train"},
+    {"query": "rebuild stored parsefabric aggregates and verify them", "should_trigger": false, "split": "train"},
+    {"query": "stream thousands of log files through ParseEngine with bounded concurrency", "should_trigger": false, "split": "train"},
+    {"query": "enable OpenTelemetry tracing for parsefabric with the built-in sink", "should_trigger": false, "split": "train"},
+    {"query": "write a Kafka consumer that reads JSON messages", "should_trigger": false, "split": "train"},
+    {"query": "summarize parsed evidence with an OpenAI model via LangChain", "should_trigger": false, "split": "train"},
+    {"query": "why do line numbers restart in every partition after splitting a log?", "should_trigger": false, "split": "validation"},
+    {"query": "write a regex to match ISO 8601 timestamps", "should_trigger": false, "split": "validation"},
+    {"query": "parse kubectl output with CLIOutputParser", "should_trigger": false, "split": "validation"},
+    {"query": "set up structlog JSON logging in a FastAPI app", "should_trigger": false, "split": "validation"}
+  ]
+}

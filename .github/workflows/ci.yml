@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -21,75 +21,100 @@ jobs:
     name: Lint and type check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.14"
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --all-extras --all-groups
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyrefly check
 
   test:
-    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    name: Test on Python ${{ matrix.python-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.12", "3.13", "3.14", "3.15"]
+    env:
+      HYPOTHESIS_PROFILE: ci
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
-      - run: uv sync --locked
-      - name: Run the tests with branch coverage
-        run: uv run coverage run -m pytest
-      - name: Require 100% line and branch coverage
-        run: uv run coverage report
+      - run: uv sync --locked --all-extras --all-groups
+      # Warnings are errors (pyproject.toml), and coverage must stay at 100%.
+      - run: uv run pytest --cov=parsefabric --cov-branch --cov-report=term-missing
+
+  lowest:
+    name: Test with the lowest supported dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --resolution lowest-direct --all-extras --all-groups
+      - run: uv run --no-sync pytest
 
   examples:
     name: Examples and benchmarks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.14"
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --all-extras --all-groups
       - name: Check the recorded output of every offline example
         run: uv run python examples/verify_examples.py
       - name: Benchmark smoke run
         run: uv run python -m benchmarks.bench_parse --records 1000
 
-  docs:
-    name: Documentation
+  skills:
+    name: Agent Skills
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.14"
           enable-cache: true
-      - run: uv sync --locked --no-default-groups --group docs
-      - run: uv run --no-default-groups --group docs mkdocs build --strict
+      - run: uv sync --locked --all-extras --all-groups
+      - run: uv run agentskills validate parsefabric-skills/skills/parsefabric
+      - run: uv run agentskills validate parsefabric-skills/skills/parsefabric-extend
+      - run: uv run pytest tests/skill
 
   package:
-    name: Build and check distributions
+    name: Build and smoke-test the package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.14"
           enable-cache: true
       - run: uv build
-      - name: Check distribution metadata
-        run: uvx twine check --strict dist/*
+      - run: uvx twine check --strict dist/*
       - name: Check the wheel contents
         run: |
           uv run --no-project python - <<'EOF'
@@ -102,26 +127,41 @@ jobs:
           unexpected = [name for name in names if not name.startswith("parsefabric")]
           assert not unexpected, f"unexpected files in the wheel: {unexpected}"
           EOF
-      - name: Install the wheel and import every public module
+      - name: Verify the core wheel without LangChain
         run: |
-          uv venv --python 3.12 /tmp/wheel
-          uv pip install --python /tmp/wheel/bin/python dist/*.whl
-          /tmp/wheel/bin/python -c "import parsefabric, parsefabric.aggregation, parsefabric.builtins, parsefabric.compression, parsefabric.engine, parsefabric.execution, parsefabric.observability, parsefabric.partitioning, parsefabric.patterns, parsefabric.registry, parsefabric.serialization, parsefabric.summarization; print(parsefabric.__version__)"
+          uv venv --no-project --python 3.12 "$RUNNER_TEMP/wheel"
+          uv pip install --python "$RUNNER_TEMP/wheel" dist/*.whl
+          "$RUNNER_TEMP/wheel/bin/python" -c "import importlib.util, parsefabric; assert importlib.util.find_spec('langchain_core') is None; print(parsefabric.__version__)"
+          "$RUNNER_TEMP/wheel/bin/python" parsefabric-skills/skills/parsefabric/scripts/verify_setup.py
+          printf 'event=login level=info user=alice\nevent=export level=error\n' > "$RUNNER_TEMP/records.kv"
+          "$RUNNER_TEMP/wheel/bin/python" parsefabric-skills/skills/parsefabric-extend/scripts/check_extension.py parser_template:KeyValueParser --path parsefabric-skills/skills/parsefabric-extend/assets --input "$RUNNER_TEMP/records.kv"
+          "$RUNNER_TEMP/wheel/bin/python" parsefabric-skills/skills/parsefabric-extend/scripts/check_extension.py sink_template:BatchingSink --path parsefabric-skills/skills/parsefabric-extend/assets
+      - name: Install the LangChain extra and run the setup check
+        run: |
+          uv pip install --python "$RUNNER_TEMP/wheel" "dist/parsefabric-$(uv version --short)-py3-none-any.whl[langchain]"
+          "$RUNNER_TEMP/wheel/bin/python" parsefabric-skills/skills/parsefabric/scripts/verify_setup.py --langchain
       - name: Install the source distribution
         run: |
-          uv venv --python 3.12 /tmp/sdist
-          uv pip install --python /tmp/sdist/bin/python dist/*.tar.gz
-          /tmp/sdist/bin/python -c "import parsefabric; print(parsefabric.__version__)"
-      - name: Run the tests from the source distribution
-        run: |
-          mkdir /tmp/sdist-tests
-          tar -xzf dist/*.tar.gz -C /tmp/sdist-tests
-          cp uv.lock /tmp/sdist-tests/parsefabric-*/
-          cd /tmp/sdist-tests/parsefabric-*/
-          uv sync --locked
-          uv run pytest -q -p no:cacheprovider
-      - uses: actions/upload-artifact@v7
+          uv venv --no-project --python 3.12 "$RUNNER_TEMP/sdist"
+          uv pip install --python "$RUNNER_TEMP/sdist" dist/*.tar.gz
+          "$RUNNER_TEMP/sdist/bin/python" -c "import parsefabric; print(parsefabric.__version__)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: dist
+          name: distributions
           path: dist/
           if-no-files-found: error
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked --group docs --all-extras
+      - run: uv run zensical build --strict
+      - run: uv run python scripts/check_site_links.py

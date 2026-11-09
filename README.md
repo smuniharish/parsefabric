@@ -1,13 +1,21 @@
-# ParseFabric
+<p align="center">
+  <img src="https://raw.githubusercontent.com/smuniharish/parsefabric/main/docs/assets/logo.svg" alt="ParseFabric logo" width="96">
+</p>
+
+<h1 align="center">ParseFabric</h1>
+
+<p align="center">
+  <a href="https://github.com/smuniharish/parsefabric/actions/workflows/ci.yml"><img src="https://github.com/smuniharish/parsefabric/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://parsefabric.readthedocs.io/en/latest/"><img src="https://readthedocs.org/projects/parsefabric/badge/?version=latest" alt="Documentation"></a>
+  <a href="https://pypi.org/project/parsefabric/"><img src="https://img.shields.io/pypi/v/parsefabric.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/parsefabric/"><img src="https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14%20%7C%203.15-blue.svg" alt="Python 3.12 | 3.13 | 3.14 | 3.15"></a>
+  <img src="https://img.shields.io/badge/coverage-100%25-brightgreen.svg" alt="Coverage 100%">
+  <img src="https://img.shields.io/badge/typing-typed-blue.svg" alt="Typed">
+  <a href="https://github.com/smuniharish/parsefabric/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+</p>
 
 **Composable parsers that turn logs, JSON, command output and mixed text into
 structured events, with evidence for every event and lossless aggregation.**
-
-[![CI](https://github.com/smuniharish/parsefabric/actions/workflows/ci.yml/badge.svg)](https://github.com/smuniharish/parsefabric/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/parsefabric)](https://pypi.org/project/parsefabric/)
-[![Python](https://img.shields.io/pypi/pyversions/parsefabric)](https://pypi.org/project/parsefabric/)
-[![Documentation](https://readthedocs.org/projects/parsefabric/badge/?version=latest)](https://parsefabric.readthedocs.io/en/latest/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/smuniharish/parsefabric/blob/main/LICENSE)
 
 ParseFabric is an asynchronous Python library for extracting structured events
 from operational text. Every event records exactly where it came from: the
@@ -31,6 +39,10 @@ original events on demand.
   backends, partitioning of large documents, and your own backends for
   clusters.
 - **Observable.** Lifecycle events for OpenTelemetry and structlog.
+- **Replace any part.** Aggregators, codecs, partitioners, execution
+  backends, sinks, language models, tokenizers and more are abstract base
+  classes with defaults. Subclass one, pass it in, and verify it with the
+  contract checks in `parsefabric.testing`.
 - **Checked summaries.** Optional language-model reports over aggregates,
   with every claim checked against the evidence.
 
@@ -40,7 +52,7 @@ original events on demand.
 pip install parsefabric
 ```
 
-ParseFabric supports Python 3.12, 3.13 and 3.14 on Linux, macOS and Windows.
+ParseFabric supports Python 3.12, 3.13, 3.14 and 3.15 on Linux, macOS and Windows.
 
 ## Quick example
 
@@ -71,10 +83,8 @@ async def main() -> None:
         )
 
     aggregates = await engine.aggregate(parser, result.events)
-    stored = parser.serialize(aggregates)
-    restored = await engine.materialize(
-        parser, LOG, parser.deserialize(stored), context
-    )
+    stored = await engine.serialize(aggregates)
+    restored = await engine.materialize(parser, LOG, await engine.deserialize(stored), context)
     print("rebuilt exactly:", restored == result.events)
 
 
@@ -149,6 +159,7 @@ The full documentation is at
 | Install and first steps | [Installation](https://parsefabric.readthedocs.io/en/latest/getting-started/installation/), [Quickstart](https://parsefabric.readthedocs.io/en/latest/getting-started/quickstart/) |
 | How parsing, evidence and aggregation work | [User guide](https://parsefabric.readthedocs.io/en/latest/guide/parsing/) |
 | Runnable examples with their output | [Examples](https://parsefabric.readthedocs.io/en/latest/examples/) |
+| Writing your own components | [Extending ParseFabric](https://parsefabric.readthedocs.io/en/latest/extending/) |
 | Every public class and function | [API reference](https://parsefabric.readthedocs.io/en/latest/reference/) |
 | Security, failure handling and performance | [Operations](https://parsefabric.readthedocs.io/en/latest/operations/security/) |
 | Using ParseFabric with AI coding agents | [Agent Skills](https://parsefabric.readthedocs.io/en/latest/agent-skills/) |

@@ -6,7 +6,7 @@ without losing any of them, so you can store, transmit or summarize far less
 data and still rebuild every original event exactly.
 
 <figure class="diagram" markdown="span">
-  ![Events of one source become one EvidenceAggregate per event type and parser, grouped by pattern and severity into entries for runs of identical adjacent events, with a SHA-256 checksum over every canonical event; deterministic, stateless parsers store only line positions while other parsers store their events; materialize rebuilds the aggregates and compares them.](../assets/diagrams/aggregation.png){ width="776" }
+  ![Events of one source become one EvidenceAggregate per event type and parser, grouped by pattern and severity into one entry per distinct message, with a SHA-256 checksum over every canonical event; deterministic, stateless parsers store only line positions while other parsers store their events; materialize rebuilds the aggregates and compares them.](../assets/diagrams/aggregation.png){ width="776" }
   <figcaption>How events become lossless, checksummed aggregates.</figcaption>
 </figure>
 
@@ -14,7 +14,8 @@ data and still rebuild every original event exactly.
 
 `ParseEngine.aggregate(parser, events)` (or `parser.aggregate(events)`)
 aggregates the events of **one source document**, in source order, with the
-parser's package-managed aggregator:
+parser's aggregator, a lossless `EvidenceAggregator` unless the parser
+[chooses another](../extending/aggregators.md):
 
 ```python
 --8<--
@@ -34,12 +35,11 @@ Output:
 | --- | --- | --- |
 | Aggregate | `EvidenceAggregate` | One event type from one parser in one source: `count`, `first_seen` and `last_seen` timestamps, parser identity and an `events_sha256` checksum |
 | Group | `EvidenceGroup` | Entries that share a pattern and a severity |
-| Entry | `EvidenceEntry` | One consecutive run of identical events: the `message`, the number of `occurrences` and the line `positions` |
+| Entry | `EvidenceEntry` | Every event of the group with one message: the `message`, the number of `occurrences` and the line `positions` |
 
-An entry covers only identical events that directly follow each other, so a
-recurrence after any other event starts a new entry and the source order is
-kept. In the output above, the timeout on line 9 is a separate entry from the
-pair on lines 4 and 5.
+A message is stored once however often it recurs, and its `positions` list
+every line it occurs on, in source order. In the output above, the timeouts
+on lines 4, 5 and 9 are one entry.
 
 An entry's `message` is the event's string `message` attribute, or all of its
 attributes when there is no message, so the aggregate states what happened
@@ -60,9 +60,10 @@ How much an aggregate stores depends on the parser's
 
 ## Store aggregates
 
-`parser.serialize(aggregates)` encodes aggregates in the versioned
+`await engine.serialize(aggregates)` encodes aggregates with the engine's
+[`AggregateCodec`](../extending/codecs.md). The default `EvidenceCodec` writes the versioned
 `parsefabric.aggregates/1` JSON format (pass `indent=2` for human reading),
-and `parser.deserialize(text)` decodes and validates it:
+and `await engine.deserialize(text)` decodes and validates it:
 
 ```json
 {
@@ -79,8 +80,7 @@ and `parser.deserialize(text)` decodes and validates it:
           "pattern": "timeout",
           "severity": "ERROR",
           "evidence": [
-            {"message": "db timeout", "occurrences": 2, "positions": [1, 2]},
-            {"message": "db timeout", "occurrences": 1, "positions": [4]}
+            {"message": "db timeout", "occurrences": 3, "positions": [1, 2, 4]}
           ]
         }
       ],
@@ -156,9 +156,10 @@ For unbounded streams, `EventAggregator.accumulator()` returns an
 
 ## Measure the savings
 
-`measure_compression(source, output)` compares sizes in bytes and in
-estimated tokens, which helps when aggregates feed a language model.
+`await measure_compression(source, output)` compares sizes in bytes and in
+tokens, which helps when aggregates feed a language model.
 `CompressionMetrics` reports `input_bytes`, `output_bytes`, `bytes_saved`,
-`reduction_percent` and the same figures for tokens. Tokens are estimated as
-one per four UTF-8 bytes by default; pass `token_estimator` to use your
-model's tokenizer instead.
+`reduction_percent` and the same figures for tokens. The default
+`ApproximateTokenizer` counts one token per four UTF-8 bytes; to count with
+your model's tokenizer, pass a [`Tokenizer`](../extending/tokenizers.md) as
+`tokenizer`.

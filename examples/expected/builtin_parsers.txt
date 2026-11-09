@@ -1,5 +1,5 @@
 json: json_record {'order': 1042, 'status': 'paid', 'total': 99.5}
-invalid json: unparsed DecodeError
+invalid json: unparsed ParseError
 traceback: TimeoutError - upstream request expired (2 frames)
 df: / 70% used
 df: /var/lib/data 96% used

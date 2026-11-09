@@ -6,8 +6,9 @@ Run: python examples/custom_parser.py
 import asyncio
 
 from parsefabric import ParseContext, ParsedEvent, ParseEngine, ParseResult
+from parsefabric.aggregation import EvidenceAggregate
 from parsefabric.parser import SemanticParser
-from parsefabric.registry import ParserRegistry
+from parsefabric.registry import InMemoryParserRegistry
 
 TICKETS = (
     "How do I reset my password?",
@@ -26,9 +27,7 @@ class IntentParser(SemanticParser):
     def __init__(self) -> None:
         super().__init__(name="ticket-intent", version="2")
 
-    async def parse(
-        self, source: object, context: ParseContext | None = None
-    ) -> ParseResult:
+    async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
         if not isinstance(source, str):
             raise TypeError("ticket text must be a string")
         label = "question" if source.rstrip().endswith("?") else "report"
@@ -40,15 +39,15 @@ class IntentParser(SemanticParser):
 
 
 async def main() -> None:
-    registry = ParserRegistry()
-    registry.register(IntentParser())
-    metadata = registry.metadata("ticket-intent")
+    registry = InMemoryParserRegistry()
+    await registry.register(IntentParser())
+    metadata = await registry.metadata("ticket-intent")
     print(
         f"registered {metadata.name} v{metadata.version} ({metadata.parser_type}),",
         f"deterministic={metadata.capabilities.deterministic}",
     )
 
-    parser = registry.get("ticket-intent")
+    parser = await registry.get("ticket-intent")
     engine = ParseEngine()
     context = ParseContext(source_id="tickets")
     events = []
@@ -58,6 +57,9 @@ async def main() -> None:
         print(f"{event.attributes['label']:<9} {event.attributes['text']}")
 
     (aggregate,) = await engine.aggregate(parser, events)
+    # Registry lookups return Parser[Aggregate]; this parser aggregates evidence.
+    if not isinstance(aggregate, EvidenceAggregate):
+        raise TypeError("IntentParser produces evidence aggregates")
     print("aggregate retains events:", aggregate.retains_events)
     restored = await engine.materialize(parser, None, (aggregate,))
     print("materialized without the source:", restored == tuple(events))

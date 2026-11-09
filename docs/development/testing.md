@@ -12,6 +12,7 @@ real services. Coverage of the package is held at 100% of lines and branches.
 | `tests/property` | Property-based tests with Hypothesis: models, parsers, aggregation, partitioning and stateful registry machines |
 | `tests/integration` | The examples, the documentation snippets and diagrams, and the distributed-runtime adapters |
 | `tests/benchmark` | Throughput gates and the summary-evaluation harness |
+| `tests/skill` | The Agent Skills: specification, links, evals, and their scripts and templates |
 | `tests/live` | Tests against a real language model; skipped unless configured |
 | `tests/support` | Shared strategies, parsers and helpers |
 
@@ -29,8 +30,7 @@ Warnings are errors, markers must be registered, and `xfail` is strict.
 ## Coverage
 
 ```bash
-uv run coverage run -m pytest
-uv run coverage report
+uv run pytest --cov=parsefabric --cov-branch --cov-report=term-missing
 ```
 
 The report fails below 100% line and branch coverage. The suite has no
@@ -82,7 +82,7 @@ Live results depend on the model, so the tests check the evidence contract
 
 The Celery, Spark and Flink adapters have integration tests that run without
 the runtimes. To run them on the real runtimes, use the Docker Compose profiles
-described in [Distributed runtimes](../guide/distributed-runtimes.md).
+described in [Distributed runtimes](../integrations/distributed-runtimes.md).
 
 ## Benchmarks
 

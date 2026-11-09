@@ -1,7 +1,6 @@
-"""Package-managed aggregation: lossless grouped evidence and lossy statistics."""
+"""Aggregation: lossless grouped evidence, lossy statistics and the `Aggregator` ABC."""
 
 from parsefabric.aggregation.base import Aggregate, Aggregator, CountAggregate
-from parsefabric.aggregation.codec import FORMAT
 from parsefabric.aggregation.evidence import (
     EvidenceAggregate,
     EvidenceAggregator,
@@ -14,7 +13,6 @@ from parsefabric.aggregation.routing import RoutingAggregator
 from parsefabric.aggregation.statistical import EventAccumulator, EventAggregator
 
 __all__ = [
-    "FORMAT",
     "Aggregate",
     "Aggregator",
     "CountAggregate",

@@ -3,20 +3,35 @@
 from __future__ import annotations
 
 from parsefabric.builtins.application_log import ApplicationLogParser
-from parsefabric.builtins.cli_output import CLIOutputParser
-from parsefabric.builtins.code_detection import DEFAULT_CODE_LANGUAGES, CodeDetector
+from parsefabric.builtins.cli_output import (
+    DEFAULT_COMMAND_BACKEND,
+    CLIOutputParser,
+    CommandOutputBackend,
+    JcBackend,
+)
+from parsefabric.builtins.code_detection import (
+    DEFAULT_CODE_DETECTOR,
+    DEFAULT_CODE_LANGUAGES,
+    CodeDetector,
+    TreeSitterCodeDetector,
+)
 from parsefabric.builtins.json_parser import JSONParser
 from parsefabric.builtins.mixed_content import MixedContentParser
 from parsefabric.builtins.python_traceback import PythonTracebackParser
 from parsefabric.builtins.timestamped_log import TimestampedLogParser
 
 __all__ = [
+    "DEFAULT_CODE_DETECTOR",
     "DEFAULT_CODE_LANGUAGES",
+    "DEFAULT_COMMAND_BACKEND",
     "ApplicationLogParser",
     "CLIOutputParser",
     "CodeDetector",
+    "CommandOutputBackend",
     "JSONParser",
+    "JcBackend",
     "MixedContentParser",
     "PythonTracebackParser",
     "TimestampedLogParser",
+    "TreeSitterCodeDetector",
 ]

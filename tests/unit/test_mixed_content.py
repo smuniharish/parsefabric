@@ -8,6 +8,7 @@ from parsefabric.builtins import (
     CLIOutputParser,
     JSONParser,
     MixedContentParser,
+    TimestampedLogParser,
 )
 from parsefabric.engine import ParseEngine
 from parsefabric.errors import CapabilityError
@@ -15,12 +16,11 @@ from parsefabric.models import ParseContext
 from parsefabric.partitioning import LinePartitioner
 from parsefabric.patterns import PredicatePattern, RegexPattern
 from parsefabric.serialization import dumps_result, loads_result
+from tests.support.aio import collect
 from tests.support.grouped import rows
 
 
-def _summary(
-    documents: tuple[Aggregate, ...], source: str
-) -> list[tuple[str, str, int]]:
+def _summary(documents: tuple[Aggregate, ...], source: str) -> list[tuple[str, str, int]]:
     """``(event_type, line refs, occurrences)`` per entry across aggregates."""
     return [
         (document.event_type, refs, occurrences)
@@ -37,12 +37,8 @@ async def test_synthetic_incident_log_preserves_all_events_and_evidence(
     engine = ParseEngine()
     result = await engine.parse(parser, source, ParseContext(source_id="incident.txt"))
     assert len(source.splitlines()) == len(result.events) == 1254
-    assert [event.evidence.line_number for event in result.events] == list(
-        range(1, 1255)
-    )
-    assert result.events[1].attributes == {
-        "text": "request_id=req-4100 route=/v1/api/items"
-    }
+    assert [event.evidence.line_number for event in result.events] == list(range(1, 1255))
+    assert result.events[1].attributes == {"text": "request_id=req-4100 route=/v1/api/items"}
     assert [result.events[index].event_type for index in (5, 6, 9)] == [
         "log",
         "log",
@@ -65,9 +61,7 @@ async def test_synthetic_incident_log_preserves_all_events_and_evidence(
 async def test_default_mixed_content_preserves_unmatched_text_and_aggregates_events():
     parser = MixedContentParser()
     engine = ParseEngine()
-    result = await engine.parse(
-        parser, "INFO started\nreturn value\nnotes\nanother note"
-    )
+    result = await engine.parse(parser, "INFO started\nreturn value\nnotes\nanother note")
     assert [(event.event_type, event.attributes) for event in result.events] == [
         ("log", {"level": "INFO", "message": "started", "text": "INFO started"}),
         ("code", {"language": "python", "text": "return value"}),
@@ -96,8 +90,7 @@ async def test_mixed_sections_preserve_recurrence_and_references() -> None:
     documents = await parser.aggregate(result.events)
     document = documents[0]
     assert _summary(documents, source) == [
-        ("log", "1,2", 2),
-        ("log", "6", 1),
+        ("log", "1,2,6", 3),
         ("fence", "3", 1),
         ("fence", "5", 1),
         ("code", "4", 1),
@@ -125,15 +118,10 @@ async def test_mixed_timestamped_logs_share_kind_references_and_round_trip() -> 
     result = await parser.parse(source, context)
     (document,) = await parser.aggregate(result.events)
     assert _summary((document,), source) == [
-        ("log", "1,2", 2),
+        ("log", "1,2,4", 3),
         ("log", "3", 1),
-        ("log", "4", 1),
     ]
-    assert [entry.message for entry in document.groups[0].evidence] == [
-        "timeout",
-        "disk full",
-        "timeout",
-    ]
+    assert [entry.message for entry in document.groups[0].evidence] == ["timeout", "disk full"]
     assert document.first_seen is None
     assert document.last_seen is None
     restored = await ParseEngine().materialize(parser, source, (document,), context)
@@ -178,9 +166,7 @@ async def test_mixed_file_classifies_logs_code_and_other_with_byte_evidence() ->
     assert result.events[4].attributes == {"text": "ÃƒÂ©tiquette inconnue"}
     assert [event.evidence.line_number for event in result.events] == list(range(1, 8))
     assert result.events[0].evidence.start_offset == 15
-    assert result.events[1].evidence.start_offset == 15 + len(
-        b"2026-09-30 12:00 ERROR failed\r\n"
-    )
+    assert result.events[1].evidence.start_offset == 15 + len(b"2026-09-30 12:00 ERROR failed\r\n")
     assert result.events[5].evidence.start_offset == 15 + len(
         source[: source.index("def run()")].encode("utf-8")
     )
@@ -201,21 +187,17 @@ async def test_mixed_file_classifies_logs_code_and_other_with_byte_evidence() ->
     assert not MixedContentParser().capabilities.partitionable
     assert MixedContentParser().capabilities.parallel_safe
     with pytest.raises(CapabilityError):
-        list(
+        await collect(
             LinePartitioner(max_lines=2).partition(
                 source.splitlines(), capabilities=MixedContentParser().capabilities
             )
         )
 
 
-async def test_custom_patterns_override_defaults_and_fallback_remains_available() -> (
-    None
-):
+async def test_custom_patterns_override_defaults_and_fallback_remains_available() -> None:
     parser = MixedContentParser(
         [
-            RegexPattern(
-                "metric", r"^METRIC (?P<name>\w+): (?P<value>\d+)$", event_type="metric"
-            ),
+            RegexPattern("metric", r"^METRIC (?P<name>\w+): (?P<value>\d+)$", event_type="metric"),
             PredicatePattern(
                 "custom",
                 lambda line: isinstance(line, str) and line.startswith("CUSTOM:"),
@@ -256,15 +238,12 @@ async def test_mixed_content_validation_and_fence_closing() -> None:
         "log",
     ]
     assert [
-        event.event_type
-        for event in (await MixedContentParser().parse("note\n\ncode?")).events
+        event.event_type for event in (await MixedContentParser().parse("note\n\ncode?")).events
     ] == ["other", "other", "other"]
     assert (await MixedContentParser().parse("")).events == ()
 
 
-async def test_routes_reuse_child_parsers_and_keep_their_results_and_provenance() -> (
-    None
-):
+async def test_routes_reuse_child_parsers_and_keep_their_results_and_provenance() -> None:
     source = 'ERROR database timeout\r\n{"status":"ok"}\nMETRIC load: 42\nunknown'
     parser = MixedContentParser(
         routes=[
@@ -305,9 +284,7 @@ async def test_routes_reuse_child_parsers_and_keep_their_results_and_provenance(
     assert result.events[3].attributes == {"name": "load", "value": "42"}
     assert result.events[4].attributes == {"text": "unknown"}
     assert [event.evidence.line_number for event in result.events] == [1, 1, 2, 3, 4]
-    assert result.events[2].evidence.start_offset == 10 + len(
-        b"ERROR database timeout\r\n"
-    )
+    assert result.events[2].evidence.start_offset == 10 + len(b"ERROR database timeout\r\n")
     assert result.events[3].evidence.start_offset == 10 + len(
         b'ERROR database timeout\r\n{"status":"ok"}\n'
     )
@@ -335,10 +312,9 @@ async def test_route_failures_are_not_misclassified_as_other() -> None:
     assert failed.events[0].attributes == {"text": "{bad JSON}"}
     assert failed.events[0].evidence.parser_name == "json"
     assert failed.events[0].evidence.line_number == 1
-    assert failed.errors[0].error_type == "DecodeError"
+    assert failed.errors[0].error_type == "ParseError"
     assert [
-        event.event_type
-        for event in (await parser.parse("```python\nERROR in code\n```\n")).events
+        event.event_type for event in (await parser.parse("```python\nERROR in code\n```\n")).events
     ] == ["fence", "code", "fence"]
 
 
@@ -357,9 +333,7 @@ async def test_multiline_json_route_keeps_one_record_between_other_lines() -> No
         '[\n  {"id": 3}\n]\n'
         "tail"
     )
-    result = await parser.parse(
-        source, ParseContext(source_id="mixed.txt", source_offset=13)
-    )
+    result = await parser.parse(source, ParseContext(source_id="mixed.txt", source_offset=13))
     assert not result.errors
     assert [event.event_type for event in result.events] == [
         "other",
@@ -408,10 +382,8 @@ async def test_incomplete_multiline_json_does_not_consume_following_route() -> N
     assert [event.event_type for event in result.events] == ["unparsed", "error"]
     assert result.events[0].attributes == {"text": '{\n  "id": 1\n'}
     assert result.events[1].evidence.line_number == 3
-    assert result.errors[0].error_type == "DecodeError"
-    default = MixedContentParser(
-        routes=[(RegexPattern("json-route", r"^\{"), JSONParser())]
-    )
+    assert result.errors[0].error_type == "ParseError"
+    default = MixedContentParser(routes=[(RegexPattern("json-route", r"^\{"), JSONParser())])
     recovered = await default.parse('{\n  "id": 1\nINFO ready\n')
     assert [event.event_type for event in recovered.events] == ["unparsed", "log"]
     assert recovered.events[1].evidence.line_number == 3
@@ -421,21 +393,20 @@ async def test_empty_child_result_falls_through_to_other() -> None:
     parser = MixedContentParser(
         routes=[(RegexPattern("log-route", r"^NOTE"), ApplicationLogParser())]
     )
-    assert [
-        event.event_type for event in (await parser.parse("NOTE still unknown")).events
-    ] == ["other"]
-    assert [
-        event.event_type for event in (await parser.parse("NOTICE unmatched")).events
-    ] == ["other"]
+    assert [event.event_type for event in (await parser.parse("NOTE still unknown")).events] == [
+        "other"
+    ]
+    assert [event.event_type for event in (await parser.parse("NOTICE unmatched")).events] == [
+        "other"
+    ]
 
 
 def test_route_names_and_types_are_validated() -> None:
     with pytest.raises(ValueError, match="unique"):
-        MixedContentParser(
-            routes=[(RegexPattern("log-level", "x"), ApplicationLogParser())]
-        )
+        MixedContentParser(routes=[(RegexPattern("log-level", "x"), ApplicationLogParser())])
     with pytest.raises(TypeError, match="Pattern, Parser"):
-        MixedContentParser(routes=[(RegexPattern("invalid", "x"), object())])  # type: ignore[list-item]
+        # pyrefly: ignore[no-matching-overload]
+        MixedContentParser(routes=[(RegexPattern("invalid", "x"), object())])
     parser = MixedContentParser(
         routes=[(PredicatePattern("predicate", lambda line: True), JSONParser())]
     )
@@ -457,6 +428,10 @@ async def test_fence_routes_parse_fenced_bodies_by_declared_language() -> None:
     )
     result = await parser.parse(source)
     assert not result.errors
+    assert result.warnings == (
+        "json fence body at line 7 kept as code: ParseError: Expecting property name "
+        "enclosed in double quotes: line 1 column 2 (char 1)",
+    )
     assert [
         (event.evidence.line_number, event.event_type, event.evidence.pattern_name)
         for event in result.events
@@ -480,13 +455,23 @@ async def test_fence_routes_parse_fenced_bodies_by_declared_language() -> None:
     assert await engine.materialize(parser, source, documents) == result.events
 
 
+async def test_fence_body_a_parser_raises_on_is_kept_as_code_with_a_warning() -> None:
+    parser = MixedContentParser(fence_routes={"log": TimestampedLogParser()})
+    result = await parser.parse("```log\nnot a record\n```\n")
+    assert [event.event_type for event in result.events] == ["fence", "code", "fence"]
+    assert result.warnings == (
+        "log fence body at line 2 kept as code: invalid timestamped log at line 1",
+    )
+
+
 def test_fence_routes_validation() -> None:
     with pytest.raises(ValueError, match="lowercase language tags"):
         MixedContentParser(fence_routes={"JSON": JSONParser()})
     with pytest.raises(ValueError, match="lowercase language tags"):
         MixedContentParser(fence_routes={"": JSONParser()})
     with pytest.raises(TypeError, match="Parser instances"):
-        MixedContentParser(fence_routes={"json": object()})  # type: ignore[dict-item]
+        # pyrefly: ignore[no-matching-overload]
+        MixedContentParser(fence_routes={"json": object()})
     with pytest.raises(ValueError, match="same name must be identical"):
         MixedContentParser(
             routes=[(RegexPattern("json-route", r"^\{"), JSONParser())],

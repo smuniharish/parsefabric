@@ -25,7 +25,7 @@ class _RecordingSink(ObservabilitySink):
     def __init__(self) -> None:
         self.events: list[LifecycleEvent] = []
 
-    def emit(self, event: LifecycleEvent) -> None:
+    async def emit(self, event: LifecycleEvent) -> None:
         self.events.append(event)
 
 
@@ -77,9 +77,7 @@ async def verify_map_failure_cleanup() -> None:
                         ["database timeout", "connection refused"],
                         max_in_flight=2,
                     ):
-                        raise AssertionError(
-                            "incompatible map job unexpectedly succeeded"
-                        )
+                        raise AssertionError("incompatible map job unexpectedly succeeded")
                 except ValueError as error:
                     if "schema version" not in str(error):
                         raise
@@ -89,8 +87,7 @@ async def verify_map_failure_cleanup() -> None:
             await asyncio.sleep(0)
             if rejected != 2 or unhandled:
                 raise AssertionError(
-                    f"map cleanup lost failures: rejected={rejected}, "
-                    f"unhandled={unhandled}"
+                    f"map cleanup lost failures: rejected={rejected}, unhandled={unhandled}"
                 )
             if sum(event.name == "ExecutionFailed" for event in sink.events) != 2:
                 raise AssertionError("map did not observe both remote task failures")

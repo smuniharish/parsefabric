@@ -30,17 +30,53 @@ line positions.
    model, and the report starts with an inventory of the severities recorded
    in the supplied evidence.
 
-## Summarize aggregates
+## Connect a model
 
-Install a LangChain integration for your provider, for example the `openai`
-extra, and pass any LangChain chat model:
+`EvidenceSummarizer` talks to models through the `LanguageModel` ABC. A
+model receives a sequence of `ChatMessage` objects, each with a `role` of
+`"system"`, `"user"` or `"assistant"` and its `content`, and returns the
+reply text. Subclass it to connect any provider:
+
+```python
+from collections.abc import Sequence
+
+from parsefabric import ChatMessage, LanguageModel
+
+
+class EchoModel(LanguageModel):
+    """Replies with the last message; replace the body with a provider call."""
+
+    async def complete(self, messages: Sequence[ChatMessage]) -> str:
+        return messages[-1].content
+
+
+print(EchoModel().name)
+```
+
+```text
+EchoModel
+```
+
+`name` defaults to the class name and appears in error messages; override it
+to identify the provider and model. ParseFabric never imports a provider
+SDK, so the core package has no model dependencies.
+
+[Language models](../extending/language-models.md) shows a model on the
+official `openai` client and how to check a model with
+`check_language_model`.
+
+Any LangChain chat model works through
+[`LangChainLanguageModel`](../integrations/langchain.md#language-models) from the
+`langchain` extra.
+
+## Summarize aggregates
 
 <!-- docs-test: skip -->
 ```python
 import asyncio
 from pathlib import Path
 
-from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI
 
 from parsefabric import ParseContext, ParseEngine
 from parsefabric.builtins import ApplicationLogParser
@@ -53,15 +89,16 @@ async def summarize(source: str) -> None:
     result = await engine.parse(parser, source, ParseContext(source_id="checkout.log"))
     aggregates = await engine.aggregate(parser, result.events)
 
-    summarizer = EvidenceSummarizer(
-        ChatOpenAI(model="gpt-5-mini"),
-        task="Which failures happened, how often, and on which lines?",
-    )
-    summary = await summarizer.summarize(aggregates)
+    async with AsyncOpenAI() as client:
+        summarizer = EvidenceSummarizer(
+            OpenAIModel(client, "gpt-5-mini"),
+            task="Which failures happened, how often, and on which lines?",
+            timeout=60,
+        )
+        summary = await summarizer.summarize(aggregates)
     print(summary.text)
     print(
-        f"{summary.aggregates} aggregates, {summary.batches} batches, "
-        f"{summary.calls} model calls"
+        f"{summary.aggregates} aggregates, {summary.batches} batches, {summary.calls} model calls"
     )
 
 
@@ -81,32 +118,33 @@ returns a copy of the result with the report in `llm_result`.
 | `max_aggregates` | 10 | Most aggregates sent to the model in one call; at least 2 |
 | `max_concurrency` | `None` | Most batches reviewed at once; `None` reviews all batches in parallel |
 | `max_revisions` | 2 | Most repair rounds per batch |
+| `timeout` | `None` | Seconds allowed for each model call; `None` waits indefinitely |
 
 Smaller batches keep each model call focused but need more calls. A batch
 that passes on the first attempt takes two calls: one draft and one critique.
 
-## Use another provider
+Batches run in an `asyncio.TaskGroup`. When one batch fails, batches that
+have not called the model yet are cancelled, and the first failure is
+raised. If the critic returns malformed output, it is asked again up to three
+times without using a revision; after that `SummaryValidationError` is
+raised.
 
-`EvidenceSummarizer` accepts any LangChain language model. With the
-`langchain` package installed, `init_chat_model` creates one from an
-identifier such as `"openai:gpt-5-mini"` or `"anthropic:<model>"`; for an
-OpenAI-compatible endpoint, pass `base_url` to `ChatOpenAI`. Configure API
-keys through environment variables, never in code.
+## Model lifecycle
 
-Use a model inside the event loop it was first used in. By default
-`ChatOpenAI` shares one asynchronous HTTP client across the process, so an
-application that calls `asyncio.run` more than once, such as a Streamlit app
-on each rerun, should give each model its own client with
-`http_async_client=openai.DefaultAsyncHttpxClient()` and close it with
-`aclose()` when finished. The OpenAI-compatible example's `open_model()` shows
-the pattern.
+ParseFabric never opens or closes your model's resources. Create a client
+inside the event loop that uses it and close it when you are done, as the
+`async with AsyncOpenAI()` block above does. An application that calls
+`asyncio.run` more than once, such as a Streamlit app on each rerun, should
+create one client per run; the OpenAI-compatible example's `open_model()`
+shows the pattern. Configure API keys through environment variables, never
+in code.
 
 The runnable examples read their configuration from environment variables:
 
 | Example | Variables |
 | --- | --- |
-| [`llm_summary.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/llm_summary.py) | `PARSEFABRIC_LLM_MODEL`, an `init_chat_model` identifier, plus the provider's API key variable |
 | [`llm_summary_openai_compatible.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/llm_summary_openai_compatible.py) | `PARSEFABRIC_LLM_API_KEY`, and optionally `PARSEFABRIC_LLM_BASE_URL` and `PARSEFABRIC_LLM_MODEL` |
+| [`llm_summary.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/llm_summary.py) | `PARSEFABRIC_LLM_MODEL`, a LangChain `init_chat_model` identifier, plus the provider's API key variable |
 | [`semantic_llm.py`](https://github.com/smuniharish/parsefabric/blob/main/examples/semantic_llm.py) | The same as the OpenAI-compatible example; a `SemanticParser` asks the model to interpret text, then the result is summarized |
 
 ## What the checks guarantee

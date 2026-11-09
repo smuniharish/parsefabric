@@ -37,9 +37,7 @@ class _FailingParser(DeterministicParser):
     def __init__(self) -> None:
         super().__init__([], name="fails")
 
-    async def parse(
-        self, source: object, context: ParseContext | None = None
-    ) -> ParseResult:
+    async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
         raise ValueError(f"expected failure: {source}")
 
 
@@ -50,9 +48,7 @@ async def test_parallel_parse_observes_every_completed_failure_on_abort(
     loop = asyncio.get_running_loop()
     previous = loop.get_exception_handler()
     unhandled: list[str] = []
-    loop.set_exception_handler(
-        lambda _, context: unhandled.append(str(context.get("message")))
-    )
+    loop.set_exception_handler(lambda _, context: unhandled.append(str(context.get("message"))))
     try:
         source = _values() if async_input else ["first", "second", "third"]
 
@@ -169,9 +165,7 @@ async def test_real_process_loss_breaks_pool_explicitly_and_new_pool_recovers() 
             assert await replacement.run(_identity, 42) == 42
 
 
-@pytest.mark.parametrize(
-    "backend_type", [ThreadExecutionBackend, ProcessExecutionBackend]
-)
+@pytest.mark.parametrize("backend_type", [ThreadExecutionBackend, ProcessExecutionBackend])
 async def test_executor_awaits_async_callables_and_reuses_pool_after_timeout(
     backend_type: type[ThreadExecutionBackend] | type[ProcessExecutionBackend],
 ) -> None:

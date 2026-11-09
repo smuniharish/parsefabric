@@ -71,9 +71,7 @@ async def main() -> None:
         )
     print("matches:", {s.pattern_name: s.matches for s in result.pattern_statistics})
 
-    first_only = await engine.parse(
-        build_parser(first_match_only=True), DEPLOY_LOG, context
-    )
+    first_only = await engine.parse(build_parser(first_match_only=True), DEPLOY_LOG, context)
     print("events with first_match_only:", len(first_only.events))
 
     parser.register_pattern(

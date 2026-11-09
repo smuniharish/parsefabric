@@ -1,9 +1,31 @@
-"""Shared UTF-8 line framing for text parsers."""
+"""Shared source decoding and UTF-8 line framing for text parsers."""
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+
+def source_text(source: object, parser: str) -> str:
+    """Return ``source`` as text, decoding bytes as strict UTF-8.
+
+    Args:
+        source: The input passed to ``parse``.
+        parser: Parser description used in the error message.
+
+    Raises:
+        TypeError: If ``source`` is neither text nor bytes.
+        UnicodeDecodeError: If bytes are not valid UTF-8.
+    """
+    if isinstance(source, str):
+        return source
+    if isinstance(source, bytes):
+        return source.decode("utf-8", errors="strict")
+    raise TypeError(f"{parser} accepts only str or bytes")
+
 
 _LINE_ENDINGS = re.compile(r"\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")
 

@@ -1,0 +1,4 @@
+AUDIT|2026-10-04 08:15:00|user=alice|action=login|result=ok
+AUDIT|2026-10-04 08:15:09|user=alice|action=export|result=denied|reason=role
+AUDIT|2026-10-04 08:16:12|user=bob|action=login|result=failed|reason=password
+AUDIT|2026-10-04 08:16:20|user=bob|action=login|result=failed|reason=password

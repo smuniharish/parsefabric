@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime
+from typing import TYPE_CHECKING
 
 import pytest
 from hypothesis import given, settings
@@ -13,10 +13,10 @@ from hypothesis import strategies as st
 from parsefabric.builtins import (
     ApplicationLogParser,
     CLIOutputParser,
-    CodeDetector,
     JSONParser,
     MixedContentParser,
     TimestampedLogParser,
+    TreeSitterCodeDetector,
 )
 from parsefabric.builtins.application_log import default_patterns
 from parsefabric.errors import ParseError
@@ -29,6 +29,9 @@ from tests.support.strategies import (
     LINE_TEXT,
     UNICODE,
 )
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 WHITESPACE = st.sampled_from([" ", "\t", "\u00a0", "\u3000", "\x1f"])
 WORDS = st.sampled_from(
@@ -55,7 +58,8 @@ LOGISH_LINES = st.lists(st.one_of(WORDS, WHITESPACE), max_size=12).map("".join)
 
 
 def _parse(parser: object, source: object, context: ParseContext | None = None):
-    return asyncio.run(parser.parse(source, context))  # type: ignore[attr-defined]
+    # pyrefly: ignore[missing-attribute]
+    return asyncio.run(parser.parse(source, context))
 
 
 def _reference_lines(text: str) -> list[tuple[str, int]]:
@@ -74,21 +78,16 @@ def test_framing_matches_splitlines_and_counts_every_byte(text: str) -> None:
 
 
 @given(st.lists(LINE_TEXT, max_size=10), st.lists(st.sampled_from(LINE_BREAKS)))
-def test_ascii_fast_path_matches_the_general_path(
-    records: list[str], breaks: list[str]
-) -> None:
+def test_ascii_fast_path_matches_the_general_path(records: list[str], breaks: list[str]) -> None:
     separators = breaks or ["\n"]
     text = "".join(
-        record + separators[index % len(separators)]
-        for index, record in enumerate(records)
+        record + separators[index % len(separators)] for index, record in enumerate(records)
     )
     expected = _reference_lines(text)
     assert list(iter_text_lines(text)) == expected
 
 
-_OLD_SIGNAL = re.compile(
-    r"^(?=.*\b(?:timeout|timed out)\b)(?P<message>.*?)\s*$", re.IGNORECASE
-)
+_OLD_SIGNAL = re.compile(r"^(?=.*\b(?:timeout|timed out)\b)(?P<message>.*?)\s*$", re.IGNORECASE)
 _OLD_LEVEL = re.compile(
     r"^\s*(?:\d{4}-\d\d-\d\d[ T]\S+\s+)?"
     r"(?P<level>TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|CRITICAL)\b"
@@ -99,9 +98,7 @@ _OLD_LEVEL = re.compile(
 
 @given(LOGISH_LINES)
 def test_linear_signal_pattern_matches_the_previous_expression(line: str) -> None:
-    (timeout,) = [
-        pattern for pattern in default_patterns() if pattern.name == "timeout"
-    ]
+    (timeout,) = [pattern for pattern in default_patterns() if pattern.name == "timeout"]
     old = _OLD_SIGNAL.search(line)
     new = timeout.match(line)
     assert (old is None) == (new is None)
@@ -112,7 +109,7 @@ def test_linear_signal_pattern_matches_the_previous_expression(line: str) -> Non
 
 @given(LOGISH_LINES)
 def test_linear_log_level_pattern_matches_the_previous_expression(line: str) -> None:
-    parser = MixedContentParser(code_languages=())
+    parser = MixedContentParser(code_detector=None)
     (level,) = parser._patterns
     old = _OLD_LEVEL.search(line)
     new = level.match(line)
@@ -130,9 +127,7 @@ def test_line_parsers_record_exact_spans_for_any_line_ending(
     offset = data.draw(st.integers(min_value=0, max_value=10_000))
     parser = ApplicationLogParser()
     result = _parse(parser, text, ParseContext(source_id="s", source_offset=offset))
-    assert result == _parse(
-        parser, text.encode("utf-8"), ParseContext("s", None, None, offset)
-    )
+    assert result == _parse(parser, text.encode("utf-8"), ParseContext("s", None, None, offset))
     encoded = text.encode("utf-8")
     framed = list(iter_text_lines(text))
     starts = [offset]
@@ -205,7 +200,7 @@ def test_mixed_content_loses_no_line_and_rebuilds_its_events(
             (RegexPattern("log-line", r"^(ERROR|WARN)\b"), logs),
         ],
         fence_routes={"sql": logs},
-        code_languages=(),
+        code_detector=None,
     )
     result = _parse(parser, text, ParseContext(source_id="mixed"))
     framed = list(iter_text_lines(text))
@@ -221,10 +216,14 @@ def test_mixed_content_loses_no_line_and_rebuilds_its_events(
 @settings(max_examples=60)
 @given(st.text(UNICODE, max_size=120))
 def test_code_detector_never_fails_on_arbitrary_text(text: str) -> None:
-    detector = CodeDetector()
-    language = detector.detect(text)
+    detector = TreeSitterCodeDetector()
+
+    async def detect_twice() -> tuple[str | None, str | None]:
+        return await detector.detect(text), await detector.detect(text)
+
+    language, again = asyncio.run(detect_twice())
     assert language is None or language in detector.languages
-    assert detector.detect(text) == language
+    assert again == language
 
 
 @given(
@@ -247,12 +246,9 @@ def test_timestamped_logs_preserve_every_line_exactly(
     )
     result = _parse(TimestampedLogParser(), text)
     assert [
-        (event.timestamp, event.severity, event.attributes["message"])
-        for event in result.events
+        (event.timestamp, event.severity, event.attributes["message"]) for event in result.events
     ] == rows
-    assert [event.evidence.line_number for event in result.events] == list(
-        range(1, len(rows) + 1)
-    )
+    assert [event.evidence.line_number for event in result.events] == list(range(1, len(rows) + 1))
 
 
 @given(LINE_TEXT.filter(lambda line: not re.match(r"^\S+\s+[A-Z]+\s+\S", line)))

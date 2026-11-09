@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from parsefabric.parser import DeterministicParser
 from parsefabric.patterns import Pattern, RegexPattern
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 __all__ = [
     "ApplicationLogParser",

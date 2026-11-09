@@ -2,35 +2,18 @@
 
 import json
 from datetime import datetime
-from typing import Any
 
 import pytest
-from langchain_core.callbacks import AsyncCallbackHandler
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from langchain_core.messages import BaseMessage
 
 from parsefabric import Evidence, EvidenceAggregator, ParsedEvent
 from parsefabric._summary_review import facts_for
 from parsefabric.errors import SummaryValidationError
 from parsefabric.summarization import EvidenceSummarizer
-from tests.support.summary_model import SummaryModel
-
-
-class _ReviewPrompts(AsyncCallbackHandler):
-    def __init__(self) -> None:
-        self.messages: list[list[BaseMessage]] = []
-
-    async def on_chat_model_start(
-        self,
-        serialized: dict[str, Any],
-        messages: list[list[BaseMessage]],
-        **kwargs: Any,
-    ) -> None:
-        self.messages.extend(messages)
+from tests.support.summary_model import PromptLog, ScriptedModel, SummaryModel
 
 
 async def test_partial_reviews_share_whole_source_severity_inventory() -> None:
-    capture = _ReviewPrompts()
+    capture = PromptLog()
     events = [
         ParsedEvent(
             "log",
@@ -43,21 +26,17 @@ async def test_partial_reviews_share_whole_source_severity_inventory() -> None:
     events.extend(
         [
             ParsedEvent("metric", {"value": 24}, evidence=Evidence(line_number=4)),
-            ParsedEvent(
-                "source_record", {"text": "note"}, evidence=Evidence(line_number=5)
-            ),
+            ParsedEvent("source_record", {"text": "note"}, evidence=Evidence(line_number=5)),
         ]
     )
     aggregates = await EvidenceAggregator(reproducible=True).aggregate(events)
-    result = await EvidenceSummarizer(
-        SummaryModel(callbacks=[capture]), max_aggregates=2
-    ).summarize(aggregates)
+    result = await EvidenceSummarizer(SummaryModel(log=capture), max_aggregates=2).summarize(
+        aggregates
+    )
     assert result.batches == 2
     assert result.calls == 4
     for system, human in capture.messages:
-        document = json.loads(
-            str(human.content).split("<evidence>\n")[1].split("\n</evidence>")[0]
-        )
+        document = json.loads(str(human.content).split("<evidence>\n")[1].split("\n</evidence>")[0])
         assert document["source_scope"] == {
             "partial": True,
             "severity_occurrences": {"ERROR": 3, "UNSPECIFIED": 2},
@@ -69,7 +48,7 @@ async def test_partial_reviews_share_whole_source_severity_inventory() -> None:
 
 
 async def test_critic_reviews_rendered_metadata_not_missing_inline_citations() -> None:
-    capture = _ReviewPrompts()
+    capture = PromptLog()
     events = [
         ParsedEvent(
             "log",
@@ -85,22 +64,20 @@ async def test_critic_reviews_rendered_metadata_not_missing_inline_citations() -
         )
     ]
     aggregates = await EvidenceAggregator(reproducible=False).aggregate(events)
-    model = FakeListChatModel(
+    model = ScriptedModel(
         responses=[
             _claims(text="Database changes committed."),
             '{"issues": ["Timeout evidence does not establish committed changes."]}',
             _claims(),
             '{"issues": []}',
         ],
-        callbacks=[capture],
+        log=capture,
     )
     summary = await EvidenceSummarizer(model).summarize(aggregates)
     assert summary.calls == 4
     for index in (1, 3):
         system, human = capture.messages[index]
-        document = json.loads(
-            str(human.content).split("<evidence>\n")[1].split("\n</evidence>")[0]
-        )
+        document = json.loads(str(human.content).split("<evidence>\n")[1].split("\n</evidence>")[0])
         candidate = document["rendered_candidate"]
         assert "3 occurrences total" in candidate
         assert "lines 15, 16, 24" in candidate
@@ -110,24 +87,20 @@ async def test_critic_reviews_rendered_metadata_not_missing_inline_citations() -
     assert (
         "committed"
         in json.loads(
-            str(capture.messages[1][1].content)
-            .split("<evidence>\n")[1]
-            .split("\n</evidence>")[0]
+            str(capture.messages[1][1].content).split("<evidence>\n")[1].split("\n</evidence>")[0]
         )["rendered_candidate"]
     )
     assert (
         summary.text
         == json.loads(
-            str(capture.messages[3][1].content)
-            .split("<evidence>\n")[1]
-            .split("\n</evidence>")[0]
+            str(capture.messages[3][1].content).split("<evidence>\n")[1].split("\n</evidence>")[0]
         )["rendered_candidate"]
     )
     assert "committed" not in summary.text
 
 
 async def test_interleaved_findings_render_occurrence_order_before_critique() -> None:
-    capture = _ReviewPrompts()
+    capture = PromptLog()
     events = [
         ParsedEvent(
             "log",
@@ -161,18 +134,19 @@ async def test_interleaved_findings_render_occurrence_order_before_critique() ->
         }
     )
     summary = await EvidenceSummarizer(
-        FakeListChatModel(responses=[draft, '{"issues": []}'], callbacks=[capture])
+        ScriptedModel(responses=[draft, '{"issues": []}'], log=capture)
     ).summarize(aggregates)
     candidate = json.loads(
-        str(capture.messages[1][1].content)
-        .split("<evidence>\n")[1]
-        .split("\n</evidence>")[0]
+        str(capture.messages[1][1].content).split("<evidence>\n")[1].split("\n</evidence>")[0]
     )["rendered_candidate"]
     assert candidate == summary.text
     timeline = candidate.split("### Source-order occurrence timeline\n", 1)[1]
-    assert [
-        int(row.split("line ")[1].split("]")[0]) for row in timeline.splitlines()
-    ] == [15, 16, 20, 24]
+    assert [int(row.split("line ")[1].split("]")[0]) for row in timeline.splitlines()] == [
+        15,
+        16,
+        20,
+        24,
+    ]
     assert timeline.index("connection restored") < timeline.rindex("database timeout")
     assert "2026-10-01T08:00:05+00:00" in timeline.splitlines()[-1]
     assert "3 occurrences total" in candidate
@@ -183,9 +157,7 @@ def _claims(
     ids: tuple[str, ...] = ("e0",),
     count: int = 3,
 ) -> str:
-    return json.dumps(
-        {"claims": [{"text": text, "evidence_ids": ids, "occurrences": count}]}
-    )
+    return json.dumps({"claims": [{"text": text, "evidence_ids": ids, "occurrences": count}]})
 
 
 async def _timeouts():
@@ -216,7 +188,7 @@ async def _timeouts():
     ],
 )
 async def test_invalid_claims_are_revised_before_critique(bad: str) -> None:
-    model = FakeListChatModel(responses=[bad, _claims(), '{"issues": []}'])
+    model = ScriptedModel(responses=[bad, _claims(), '{"issues": []}'])
     result = await EvidenceSummarizer(model).summarize(await _timeouts())
     assert result.calls == 3
     assert "3 occurrences total" in result.text
@@ -225,7 +197,7 @@ async def test_invalid_claims_are_revised_before_critique(bad: str) -> None:
 
 
 async def test_critic_rejection_requires_revised_claims_and_another_review() -> None:
-    model = FakeListChatModel(
+    model = ScriptedModel(
         responses=[
             _claims(text="The updates committed successfully."),
             '{"issues": ["SQL text does not prove execution or commit."]}',
@@ -253,11 +225,9 @@ async def test_metric_stage_overclaim_is_revised_without_dropping_values() -> No
     def draft(text: str) -> str:
         return _claims(text=text, ids=("e0", "e1"), count=2)
 
-    model = FakeListChatModel(
+    model = ScriptedModel(
         responses=[
-            draft(
-                "Reconciliation-candidate metrics were recorded at different stages."
-            ),
+            draft("Reconciliation-candidate metrics were recorded at different stages."),
             '{"issues": ["The source does not label lifecycle stages."]}',
             draft("Reconciliation-candidate metric values were recorded."),
             '{"issues": []}',
@@ -273,7 +243,7 @@ async def test_metric_stage_overclaim_is_revised_without_dropping_values() -> No
 
 
 async def test_unselected_metrics_remain_visible_to_critic_and_reader() -> None:
-    capture = _ReviewPrompts()
+    capture = PromptLog()
     events = [
         ParsedEvent("log", {"message": "failed"}, severity="ERROR"),
         ParsedEvent(
@@ -289,34 +259,32 @@ async def test_unselected_metrics_remain_visible_to_critic_and_reader() -> None:
     ]
     aggregates = await EvidenceAggregator(reproducible=True).aggregate(events)
     summary = await EvidenceSummarizer(
-        FakeListChatModel(
+        ScriptedModel(
             responses=[_claims(text="Failure recorded.", count=1), '{"issues": []}'],
-            callbacks=[capture],
+            log=capture,
         )
     ).summarize(aggregates)
     assert '"value": 24' in summary.text
     assert '"value": 2' in summary.text
     assert "lines 5" in summary.text
     assert "lines 22" in summary.text
-    assert summary.text in str(capture.messages[1][1].content).replace(
-        '\\"', '"'
-    ).replace("\\n", "\n")
+    assert summary.text in str(capture.messages[1][1].content).replace('\\"', '"').replace(
+        "\\n", "\n"
+    )
 
 
 async def test_source_record_layout_is_owned_by_renderer_not_prose_repairs() -> None:
-    capture = _ReviewPrompts()
+    capture = PromptLog()
     aggregates = await EvidenceAggregator(reproducible=True).aggregate(
         [ParsedEvent("metric", {"name": "candidates", "value": 24})]
     )
     summary = await EvidenceSummarizer(
-        FakeListChatModel(
+        ScriptedModel(
             responses=['{"claims": []}', '{"issues": []}'],
-            callbacks=[capture],
+            log=capture,
         )
     ).summarize(aggregates)
-    assert summary.text.splitlines()[2].startswith(
-        "- Source record. **1 occurrence total**"
-    )
+    assert summary.text.splitlines()[2].startswith("- Source record. **1 occurrence total**")
     assert "- Source record. - **" not in summary.text
     assert "must not trigger prose revisions" in str(capture.messages[1][0].content)
     assert summary.calls == 2
@@ -327,7 +295,7 @@ async def test_supported_numeric_identifiers_are_not_rejected() -> None:
         [ParsedEvent("sql_statement", {"text": "UPDATE orders WHERE id = 4101"})]
     )
     result = await EvidenceSummarizer(
-        FakeListChatModel(
+        ScriptedModel(
             responses=[
                 _claims(text="Statement targets order 4101.", count=1),
                 '{"issues": []}',
@@ -370,7 +338,7 @@ async def test_context_support_does_not_inflate_finding_occurrences() -> None:
         }
     )
     summary = await EvidenceSummarizer(
-        FakeListChatModel(responses=[draft, '{"issues": []}'])
+        ScriptedModel(responses=[draft, '{"issues": []}'])
     ).summarize(aggregates)
     assert "3 occurrences total" in summary.text
     assert "4 occurrences total" not in summary.text
@@ -380,7 +348,7 @@ async def test_context_support_does_not_inflate_finding_occurrences() -> None:
 
 
 async def test_unresolved_criticism_raises_instead_of_returning_success() -> None:
-    model = FakeListChatModel(
+    model = ScriptedModel(
         responses=[
             _claims(),
             '{"issues": ["Unsupported claim."]}',
@@ -396,21 +364,17 @@ async def test_unresolved_criticism_raises_instead_of_returning_success() -> Non
 async def test_zero_revisions_and_malformed_critic_fail_explicitly() -> None:
     with pytest.raises(SummaryValidationError, match="after 0 revisions"):
         await EvidenceSummarizer(
-            FakeListChatModel(responses=[_claims(count=1)]), max_revisions=0
+            ScriptedModel(responses=[_claims(count=1)]), max_revisions=0
         ).summarize(await _timeouts())
     with pytest.raises(SummaryValidationError, match="Critic"):
         await EvidenceSummarizer(
-            FakeListChatModel(responses=[_claims(), '{"approved": true}'])
+            ScriptedModel(responses=[_claims(), '{"approved": true}'])
         ).summarize(await _timeouts())
 
 
 async def test_malformed_critique_is_repaired_within_existing_revision_budget() -> None:
-    model = FakeListChatModel(
-        responses=[_claims(), '{"approved": true}', _claims(), '{"issues": []}']
-    )
-    summary = await EvidenceSummarizer(model, max_revisions=1).summarize(
-        await _timeouts()
-    )
+    model = ScriptedModel(responses=[_claims(), '{"approved": true}', _claims(), '{"issues": []}'])
+    summary = await EvidenceSummarizer(model, max_revisions=1).summarize(await _timeouts())
     assert summary.calls == 4
     assert "3 occurrences total" in summary.text
 
@@ -420,7 +384,7 @@ async def test_zero_labeled_errors_is_renderer_metadata_not_invented_claim() -> 
         [ParsedEvent("metric", {"value": 24}, evidence=Evidence(line_number=1))]
     )
     summary = await EvidenceSummarizer(
-        FakeListChatModel(responses=['{"claims":[]}', '{"issues":[]}'])
+        ScriptedModel(responses=['{"claims":[]}', '{"issues":[]}'])
     ).summarize(aggregates)
     assert "No severity-labeled errors or warnings were recorded." in summary.text
     assert "Source record." in summary.text
@@ -436,7 +400,7 @@ async def test_error_omission_cannot_be_approved_by_the_critic() -> None:
     )
     with pytest.raises(SummaryValidationError, match="every error/warning"):
         await EvidenceSummarizer(
-            FakeListChatModel(responses=[_claims(ids=("e0",), count=1)]),
+            ScriptedModel(responses=[_claims(ids=("e0",), count=1)]),
             max_revisions=0,
         ).summarize(aggregate)
 
@@ -455,11 +419,11 @@ async def test_fence_marker_is_not_accepted_as_statement_evidence() -> None:
     )
     with pytest.raises(SummaryValidationError, match="fence delimiters"):
         await EvidenceSummarizer(
-            FakeListChatModel(responses=[_claims(ids=("e0",), count=1)]),
+            ScriptedModel(responses=[_claims(ids=("e0",), count=1)]),
             max_revisions=0,
         ).summarize(aggregate)
     result = await EvidenceSummarizer(
-        FakeListChatModel(
+        ScriptedModel(
             responses=[
                 _claims(text="A SELECT statement is present.", ids=("e2",), count=1),
                 '{"issues": []}',
@@ -473,9 +437,7 @@ async def test_fence_marker_is_not_accepted_as_statement_evidence() -> None:
 
 async def test_timestamp_metadata_is_rendered_only_from_retained_records() -> None:
     events = [
-        ParsedEvent(
-            "state", {"message": "recovering"}, evidence=Evidence(line_number=19)
-        ),
+        ParsedEvent("state", {"message": "recovering"}, evidence=Evidence(line_number=19)),
         ParsedEvent(
             "log",
             {"message": "resumed"},
@@ -489,7 +451,7 @@ async def test_timestamp_metadata_is_rendered_only_from_retained_records() -> No
     assert facts[0].timestamps == ()
     assert facts[1].timestamps_known
     result = await EvidenceSummarizer(
-        FakeListChatModel(
+        ScriptedModel(
             responses=[
                 json.dumps(
                     {
@@ -519,7 +481,7 @@ async def test_timestamp_metadata_is_rendered_only_from_retained_records() -> No
 
 async def test_duplicate_aggregates_fail_before_any_model_call() -> None:
     (aggregate,) = await _timeouts()
-    model = FakeListChatModel(responses=["must not run"])
+    model = ScriptedModel(responses=["must not run"])
     with pytest.raises(ValueError, match="double-count"):
         await EvidenceSummarizer(model).summarize((aggregate, aggregate))
     assert model.i == 0
@@ -549,7 +511,7 @@ async def test_disjoint_aggregate_runs_are_totaled_in_the_same_batch() -> None:
         ]
     )
     result = await EvidenceSummarizer(
-        FakeListChatModel(responses=[_claims(), '{"issues": []}']),
+        ScriptedModel(responses=[_claims(), '{"issues": []}']),
         max_aggregates=2,
     ).summarize((*later, *first))
     assert (result.aggregates, result.batches, result.calls) == (2, 1, 2)
@@ -562,7 +524,7 @@ async def test_empty_irrelevant_batch_is_reviewed_not_rendered_as_commentary() -
         [ParsedEvent("sql_statement", {"message": "select"})]
     )
     summary = await EvidenceSummarizer(
-        FakeListChatModel(responses=['{"claims": []}', '{"issues": []}']),
+        ScriptedModel(responses=['{"claims": []}', '{"issues": []}']),
         task="Find failures.",
     ).summarize(aggregate)
     assert "Source record." in summary.text

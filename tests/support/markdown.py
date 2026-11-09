@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 import textwrap
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 SKIP_MARKER = "<!-- docs-test: skip -->"
 """Placed on the line before a fence: compile the snippet but do not run it."""

@@ -13,33 +13,51 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import nullcontext
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import streamlit as st
-from langchain_core.language_models import BaseChatModel
 from llm_summary_openai_compatible import open_model
 from ui_backend import (
     PARSERS,
     SAMPLES,
     PlaygroundOptions,
-    build_parser,
     run_parse,
     sample_text,
 )
 
-from parsefabric.aggregation import EvidenceAggregate
-from parsefabric.compression import measure_compression
+from parsefabric.compression import CompressionMetrics, measure_compression
+from parsefabric.engine import ParseEngine
 from parsefabric.errors import ParseError
-from parsefabric.models import ParseResult
+from parsefabric.llm import LanguageModel
+
+if TYPE_CHECKING:
+    from parsefabric.aggregation import EvidenceAggregate
+    from parsefabric.models import ParseResult
 
 
-async def _parse(
-    source: str, options: PlaygroundOptions
-) -> tuple[ParseResult, tuple[EvidenceAggregate, ...]]:
-    configured = (
-        open_model() if options.llm_enabled else nullcontext[BaseChatModel | None](None)
-    )
+@dataclass(frozen=True, slots=True)
+class ParseRun:
+    result: ParseResult
+    aggregates: tuple[EvidenceAggregate, ...]
+    compact: str
+    indented: str
+    metrics: CompressionMetrics
+
+
+async def _parse(source: str, options: PlaygroundOptions) -> ParseRun:
+    configured = open_model() if options.llm_enabled else nullcontext[LanguageModel | None](None)
     async with configured as model:
-        return await run_parse(source, options, model=model)
+        result, aggregates = await run_parse(source, options, model=model)
+    engine = ParseEngine()
+    compact = await engine.serialize(aggregates)
+    return ParseRun(
+        result,
+        aggregates,
+        compact,
+        await engine.serialize(aggregates, indent=2),
+        await measure_compression(source, compact),
+    )
 
 
 def show_json_output(label: str, text: str) -> None:
@@ -77,10 +95,8 @@ def main() -> None:
     llm_enabled = st.sidebar.toggle("LLM summarization", value=False)
     max_aggregates = 10
     if llm_enabled:
-        max_aggregates = int(
-            st.sidebar.number_input(
-                "Max aggregates per LLM call", min_value=2, value=10
-            )
+        max_aggregates = st.sidebar.number_input(
+            "Max aggregates per LLM call", min_value=2, value=10
         )
         st.sidebar.caption(
             "Uses the server's PARSEFABRIC_LLM_API_KEY, PARSEFABRIC_LLM_BASE_URL "
@@ -111,25 +127,19 @@ def main() -> None:
             max_aggregates=max_aggregates,
         )
         try:
-            result, aggregates = asyncio.run(
-                _parse(st.session_state["input_text"], options)
-            )
+            run = asyncio.run(_parse(st.session_state["input_text"], options))
         except (ParseError, TypeError, ValueError, ImportError) as error:
             st.session_state.pop("latest", None)
             st.exception(error)
         else:
-            st.session_state["latest"] = (
-                result,
-                aggregates,
-                options,
-                st.session_state["input_text"],
-            )
+            st.session_state["latest"] = (run, options)
 
     if "latest" not in st.session_state:
         st.info("Select a parser, then press Parse and aggregate.")
         return
 
-    result, aggregates, used_options, parsed_source = st.session_state["latest"]
+    run, used_options = st.session_state["latest"]
+    result, aggregates = run.result, run.aggregates
     st.subheader("Last run")
     st.caption(f"{used_options.parser_name} | source: {used_options.source_id}")
     events = [event.to_dict() for event in result.events]
@@ -142,18 +152,13 @@ def main() -> None:
         st.warning(warning)
     for error in result.errors:
         st.error(str(error))
-    parser = build_parser(used_options)
-    metrics = measure_compression(parsed_source, parser.serialize(aggregates))
+    metrics = run.metrics
     before, after, change, tokens = st.columns(4)
     before.metric("Input size (UTF-8)", f"{metrics.input_bytes:,} B")
     after.metric("Aggregate size (compact JSON)", f"{metrics.output_bytes:,} B")
     change.metric(
         "Byte reduction",
-        (
-            f"{metrics.reduction_percent:+.1f}%"
-            if metrics.reduction_percent is not None
-            else "N/A"
-        ),
+        (f"{metrics.reduction_percent:+.1f}%" if metrics.reduction_percent is not None else "N/A"),
         delta=f"{metrics.bytes_saved:+,} B",
     )
     tokens.metric(
@@ -196,17 +201,15 @@ def main() -> None:
     st.subheader("Final aggregated output")
     st.caption(
         "The canonical parsefabric.aggregates/1 document from "
-        "parser.serialize(), shown indented; sizes are measured on its compact "
+        "ParseEngine.serialize(), shown indented; sizes are measured on its compact "
         "form. Each evidence entry has a message, occurrences, and the 1-based "
         "line positions of its events in the input. The SHA-256 checksum covers "
         "every complete event."
     )
-    show_json_output("Complete aggregates JSON", parser.serialize(aggregates, indent=2))
+    show_json_output("Complete aggregates JSON", run.indented)
     st.subheader("Parsed events and evidence")
     st.caption("All events with complete evidence, timestamps, and attributes.")
-    show_json_output(
-        "Complete events JSON", json.dumps(events, indent=2, ensure_ascii=False)
-    )
+    show_json_output("Complete events JSON", json.dumps(events, indent=2, ensure_ascii=False))
     st.subheader("Final ParseResult")
     if result.llm_result is not None:
         st.subheader("LLM summarization")

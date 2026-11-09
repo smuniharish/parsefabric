@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from bisect import bisect_left
 from dataclasses import replace
-from typing import override
+from typing import TYPE_CHECKING, cast, overload, override
 
-from parsefabric.aggregation import Aggregator, RoutingAggregator
-from parsefabric.builtins.code_detection import DEFAULT_CODE_LANGUAGES, CodeDetector
+from parsefabric.aggregation import Aggregate, Aggregator, EvidenceAggregate, RoutingAggregator
+from parsefabric.builtins.code_detection import DEFAULT_CODE_DETECTOR, CodeDetector
 from parsefabric.builtins.json_parser import JSONParser
 from parsefabric.capabilities import ParserCapabilities
 from parsefabric.errors import ParseError, ParseIssue
@@ -20,8 +20,12 @@ from parsefabric.models import (
     PatternStatistic,
 )
 from parsefabric.parser import Parser
-from parsefabric.parser._text import iter_text_lines
+from parsefabric.parser._text import iter_text_lines, source_text
+from parsefabric.parser.base import AggregateT_co
 from parsefabric.patterns import ExactPattern, Pattern, RegexPattern
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
 
 
 def _scan_json_brackets(
@@ -80,16 +84,20 @@ def _covered_lines(events: Iterable[ParsedEvent], lines: Sequence[_Line]) -> set
 
     Adopted events always carry a line number and a byte span (see ``_adopt``).
     """
+    starts = [start for _, _, start, _ in lines]
     covered: set[int] = set()
     for event in events:
         evidence = event.evidence
         first, last = evidence.start_offset or 0, evidence.end_offset or 0
         covered.add(evidence.line_number or 0)
-        covered.update(number for number, _, start, _ in lines if first <= start < last)
+        covered.update(
+            lines[index][0]
+            for index in range(bisect_left(starts, first), bisect_left(starts, last))
+        )
     return covered
 
 
-def _code_languages(detector: CodeDetector, lines: Sequence[_Line]) -> list[str | None]:
+async def _code_languages(detector: CodeDetector, lines: Sequence[_Line]) -> list[str | None]:
     """Return the detected language of each line, ``None`` for non-code lines.
 
     Code spans lines (``def f():`` alone is not valid), so whole indentation
@@ -100,25 +108,25 @@ def _code_languages(detector: CodeDetector, lines: Sequence[_Line]) -> list[str 
     languages: list[str | None] = [None] * len(lines)
     blocks = _blocks(lines)
 
-    def detect(first: int, last: int) -> str | None:
+    async def detect(first: int, last: int) -> str | None:
         indexes = [index for block in blocks[first : last + 1] for index in block]
-        return detector.detect("\n".join(lines[index][1] for index in indexes))
+        return await detector.detect("\n".join(lines[index][1] for index in indexes))
 
     position = 0
     while position < len(blocks):
         last = position
-        language = detect(position, position)
+        language = await detect(position, position)
         if language is None and position + 1 < len(blocks):
-            language = detect(position, position + 1)
+            language = await detect(position, position + 1)
             last = position + 1
         if language is None:
             if len(blocks[position]) > 1:
                 for index in blocks[position]:
-                    languages[index] = detector.detect(lines[index][1])
+                    languages[index] = await detector.detect(lines[index][1])
             position += 1
             continue
         while last + 1 < len(blocks) and last - position < _MAX_BLOCK_EXTENSION:
-            extended = detect(position, last + 1)
+            extended = await detect(position, last + 1)
             if extended is None:
                 break
             language, last = extended, last + 1
@@ -131,7 +139,7 @@ def _code_languages(detector: CodeDetector, lines: Sequence[_Line]) -> list[str 
     return languages
 
 
-class MixedContentParser(Parser):
+class MixedContentParser(Parser[AggregateT_co]):
     """Parse documents that mix logs, JSON, code and free text, line by line.
 
     Each line is classified in this order:
@@ -147,10 +155,14 @@ class MixedContentParser(Parser):
        until the JSON value is complete.
     3. The first matching pattern, in priority order, produces an event.
     4. Remaining lines are grouped into indentation blocks and become
-       ``code`` events (with ``language``) when a tree-sitter grammar parses
+       ``code`` events (with ``language``) when the code detector recognizes
        them as code, or ``other`` events with the line as ``text``.
 
     No line is lost: every line produces at least one event.
+
+    The parser is a ``MixedContentParser[EvidenceAggregate]`` when every
+    routed parser aggregates evidence, and a ``MixedContentParser[Aggregate]``
+    when a routed parser uses another aggregator.
 
     Args:
         patterns: Line patterns. Defaults to one ``log-level`` pattern that
@@ -159,8 +171,9 @@ class MixedContentParser(Parser):
         routes: ``(selector, parser)`` pairs; routed parsers with the same
             name must be the same instance.
         fence_routes: Parser for each lowercase fence language tag.
-        code_languages: Grammars used to detect unfenced code;
-            ``()`` disables detection.
+        code_detector: Detects unfenced code and untagged fence languages.
+            Defaults to the shared tree-sitter detector for
+            `DEFAULT_CODE_LANGUAGES`; ``None`` disables detection.
 
     Raises:
         TypeError: If a route is not a ``(Pattern, Parser)`` pair or routes to
@@ -169,19 +182,37 @@ class MixedContentParser(Parser):
             ``code_fence``, ``other``) is used, or a fence tag is invalid.
     """
 
+    @overload
+    def __init__(
+        self: MixedContentParser[EvidenceAggregate],
+        patterns: Sequence[Pattern] | None = None,
+        *,
+        routes: Sequence[tuple[Pattern, Parser[EvidenceAggregate]]] = (),
+        fence_routes: Mapping[str, Parser[EvidenceAggregate]] | None = None,
+        code_detector: CodeDetector | None = DEFAULT_CODE_DETECTOR,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: MixedContentParser[Aggregate],
+        patterns: Sequence[Pattern] | None = None,
+        *,
+        routes: Sequence[tuple[Pattern, Parser[Aggregate]]] = (),
+        fence_routes: Mapping[str, Parser[Aggregate]] | None = None,
+        code_detector: CodeDetector | None = DEFAULT_CODE_DETECTOR,
+    ) -> None: ...
+
     def __init__(
         self,
         patterns: Sequence[Pattern] | None = None,
         *,
-        routes: Sequence[tuple[Pattern, Parser]] = (),
-        fence_routes: Mapping[str, Parser] | None = None,
-        code_languages: Sequence[str] = DEFAULT_CODE_LANGUAGES,
+        routes: Sequence[tuple[Pattern, Parser[Aggregate]]] = (),
+        fence_routes: Mapping[str, Parser[Aggregate]] | None = None,
+        code_detector: CodeDetector | None = DEFAULT_CODE_DETECTOR,
     ) -> None:
-        self._code_detector = (
-            CodeDetector(code_languages)
-            if isinstance(code_languages, str) or code_languages
-            else None
-        )
+        if code_detector is not None and not isinstance(code_detector, CodeDetector):
+            raise TypeError("code_detector must be a CodeDetector or None")
+        self._code_detector = code_detector
         selected = (
             patterns
             if patterns is not None
@@ -198,7 +229,7 @@ class MixedContentParser(Parser):
             )
         )
         self._routes = tuple(routes)
-        self._fence_routes: dict[str, Parser] = {}
+        self._fence_routes: dict[str, Parser[Aggregate]] = {}
         for language, parser in (fence_routes or {}).items():
             if (
                 not isinstance(language, str)
@@ -206,59 +237,45 @@ class MixedContentParser(Parser):
                 or language != language.strip().lower()
                 or any(character.isspace() for character in language)
             ):
-                raise ValueError(
-                    "fence_routes keys must be lowercase language tags such as 'sql'"
-                )
+                raise ValueError("fence_routes keys must be lowercase language tags such as 'sql'")
             if not isinstance(parser, Parser):
                 raise TypeError("fence_routes values must be Parser instances")
             self._fence_routes[language] = parser
-        self._route_parsers: dict[str, Parser] = {}
+        self._route_parsers: dict[str, Parser[Aggregate]] = {}
         route_parsers = self._route_parsers
         for selector, parser in self._routes:
             if not isinstance(selector, Pattern) or not isinstance(parser, Parser):
                 raise TypeError("routes must contain (Pattern, Parser) pairs")
             if parser is self:
-                raise TypeError(
-                    "mixed content routes cannot route to the parser itself"
-                )
-            if (
-                parser.name in route_parsers
-                and route_parsers[parser.name] is not parser
-            ):
+                raise TypeError("mixed content routes cannot route to the parser itself")
+            if parser.name in route_parsers and route_parsers[parser.name] is not parser:
                 raise ValueError("routed parsers with the same name must be identical")
             route_parsers[parser.name] = parser
         for parser in self._fence_routes.values():
             if parser is self:
-                raise TypeError(
-                    "mixed content routes cannot route to the parser itself"
-                )
-            if (
-                parser.name in route_parsers
-                and route_parsers[parser.name] is not parser
-            ):
+                raise TypeError("mixed content routes cannot route to the parser itself")
+            if parser.name in route_parsers and route_parsers[parser.name] is not parser:
                 raise ValueError("routed parsers with the same name must be identical")
             route_parsers[parser.name] = parser
         names = [pattern.name for pattern in selected] + [
             selector.name for selector, _ in self._routes
         ]
-        if len(names) != len(set(names)) or {"code", "code_fence", "other"} & set(
-            names
-        ):
-            raise ValueError(
-                "mixed content pattern names must be unique and reserved names unused"
-            )
+        if len(names) != len(set(names)) or {"code", "code_fence", "other"} & set(names):
+            raise ValueError("mixed content pattern names must be unique and reserved names unused")
         self._patterns = tuple(
             sorted(selected, key=lambda pattern: (-pattern.priority, pattern.name))
         )
         self._default_patterns = patterns is None
 
     @override
-    def _build_aggregator(self) -> Aggregator:
+    def build_aggregator(self) -> Aggregator[AggregateT_co]:
         """Fallback events use grouped evidence; routed events use their parser's."""
-        return RoutingAggregator(
-            super()._build_aggregator(),
+        aggregator = RoutingAggregator(
+            super().build_aggregator(),
             {name: parser.aggregator for name, parser in self._route_parsers.items()},
         )
+        # The __init__ overloads choose the type from the routed parsers.
+        return cast("Aggregator[AggregateT_co]", aggregator)
 
     @property
     @override
@@ -295,8 +312,7 @@ class MixedContentParser(Parser):
         stateful = any(parser.capabilities.stateful for parser in routed)
         requires_order = any(parser.capabilities.requires_order for parser in routed)
         return ParserCapabilities(
-            deterministic=pure
-            and all(parser.capabilities.deterministic for parser in routed),
+            deterministic=pure and all(parser.capabilities.deterministic for parser in routed),
             parallel_safe=pure
             and not stateful
             and not requires_order
@@ -349,13 +365,9 @@ class MixedContentParser(Parser):
                     ),
                     context,
                     start_offset=(
-                        evidence.start_offset
-                        if evidence.start_offset is not None
-                        else start
+                        evidence.start_offset if evidence.start_offset is not None else start
                     ),
-                    end_offset=(
-                        evidence.end_offset if evidence.end_offset is not None else end
-                    ),
+                    end_offset=(evidence.end_offset if evidence.end_offset is not None else end),
                     pattern_name=evidence.pattern_name or route,
                 )
             )
@@ -376,20 +388,26 @@ class MixedContentParser(Parser):
         Only the fence's declared language selects a parser, never the body's
         content. Fenced snippets are often illustrative, so a body the parser
         rejects (a ``ParseError`` or parse issues) stays ``code`` instead of
-        failing the document.
+        failing the document, and the rejection is recorded as a warning.
         """
         parser = self._fence_routes.get(language)
         if parser is None or not any(line.strip() for _, line, _, _ in body):
             return None
         start, end = body[0][2], body[-1][3]
+        label = f"{language} fence body at line {body[0][0]}"
         routed_text = data[start - source_start : end - source_start]
         try:
             child = await parser.parse(
                 routed_text.decode("utf-8"), self._child_context(context, start)
             )
-        except ParseError:
+        except ParseError as error:
+            warnings.append(f"{label} kept as code: {error}")
             return None
-        if child.errors or not child.events:
+        if child.errors:
+            reasons = "; ".join(f"{issue.error_type}: {issue.message}" for issue in child.errors)
+            warnings.append(f"{label} kept as code: {reasons}")
+            return None
+        if not child.events:
             return None
         adopted: list[ParsedEvent] = []
         self._adopt(
@@ -411,12 +429,7 @@ class MixedContentParser(Parser):
         source: object,
         context: ParseContext | None = None,
     ) -> ParseResult:
-        if isinstance(source, bytes):
-            text = source.decode("utf-8", errors="strict")
-        elif isinstance(source, str):
-            text = source
-        else:
-            raise TypeError("mixed content parser accepts only str or bytes")
+        text = source_text(source, "mixed content parser")
 
         events: list[ParsedEvent] = []
         warnings: list[str] = []
@@ -432,12 +445,8 @@ class MixedContentParser(Parser):
         lines = iter(enumerate(iter_text_lines(text), start=1))
         line_item = next(lines, None)
 
-        def fallback(
-            line: str, kind: str = "other", language: str | None = None
-        ) -> ParsedEvent:
-            attributes: dict[str, JSONValue] = (
-                {} if language is None else {"language": language}
-            )
+        def fallback(line: str, kind: str = "other", language: str | None = None) -> ParsedEvent:
+            attributes: dict[str, JSONValue] = {} if language is None else {"language": language}
             attributes["text"] = line
             return ParsedEvent(kind, attributes=attributes)
 
@@ -457,18 +466,16 @@ class MixedContentParser(Parser):
                 )
             )
 
-        def flush() -> None:
+        async def flush() -> None:
             """Emit buffered unmatched lines as detected code or other text."""
             if not pending:
                 return
             languages = (
-                _code_languages(self._code_detector, pending)
+                await _code_languages(self._code_detector, pending)
                 if self._code_detector is not None
                 else [None] * len(pending)
             )
-            for (number, line, start, end), language in zip(
-                pending, languages, strict=True
-            ):
+            for (number, line, start, end), language in zip(pending, languages, strict=True):
                 if language is None:
                     append(fallback(line), number, start, end, "other")
                 else:
@@ -485,7 +492,7 @@ class MixedContentParser(Parser):
                 fence = marker.group(1)
                 info = line[marker.end() :].split()
                 language = info[0].lower() if info else ""
-                flush()
+                await flush()
                 opening: _Line = (line_number, line, start, byte_offset)
                 body: list[tuple[int, str, int, int]] = []
                 closing: tuple[int, str, int, int] | None = None
@@ -505,7 +512,7 @@ class MixedContentParser(Parser):
                         break
                     body.append((body_number, body_line, body_start, byte_offset))
                 fence_language = language or (
-                    self._code_detector.detect("\n".join(item[1] for item in body))
+                    await self._code_detector.detect("\n".join(item[1] for item in body))
                     if self._code_detector is not None and body
                     else None
                 )
@@ -534,9 +541,9 @@ class MixedContentParser(Parser):
                 covered = _covered_lines(adopted or (), body)
                 by_line: dict[int, list[ParsedEvent]] = {}
                 for routed_event in adopted or ():
-                    by_line.setdefault(
-                        routed_event.evidence.line_number or 0, []
-                    ).append(routed_event)
+                    by_line.setdefault(routed_event.evidence.line_number or 0, []).append(
+                        routed_event
+                    )
                 for body_number, body_line, body_start, body_end in body:
                     events.extend(by_line.pop(body_number, ()))
                     if body_number not in covered:
@@ -562,13 +569,9 @@ class MixedContentParser(Parser):
                 if selector.match(line) is None:
                     continue
                 routed_text = line
-                if isinstance(parser, JSONParser) and line.lstrip().startswith(
-                    ("{", "[")
-                ):
+                if isinstance(parser, JSONParser) and line.lstrip().startswith(("{", "[")):
                     stack: list[str] = []
-                    complete, in_string, escaped = _scan_json_brackets(
-                        line, stack, False, False
-                    )
+                    complete, in_string, escaped = _scan_json_brackets(line, stack, False, False)
                     if not complete:
                         if source_bytes is None:
                             source_bytes = text.encode("utf-8")
@@ -597,10 +600,8 @@ class MixedContentParser(Parser):
                         routed_text = source_bytes[
                             start - source_start : byte_offset - source_start
                         ].decode("utf-8")
-                flush()
-                child = await parser.parse(
-                    routed_text, self._child_context(context, start)
-                )
+                await flush()
+                child = await parser.parse(routed_text, self._child_context(context, start))
                 warnings.extend(child.warnings)
                 errors.extend(child.errors)
                 if self._adopt(
@@ -628,7 +629,7 @@ class MixedContentParser(Parser):
             if matched is None:
                 pending.append((line_number, line, start, byte_offset))
                 continue
-            flush()
+            await flush()
             pattern, match = matched
             event = pattern.to_event(match)
             if self._default_patterns:
@@ -641,7 +642,7 @@ class MixedContentParser(Parser):
                     severity=level.upper() if isinstance(level, str) else None,
                 )
             append(event, line_number, start, byte_offset, pattern.name)
-        flush()
+        await flush()
         return ParseResult(
             events=tuple(events),
             warnings=tuple(warnings),

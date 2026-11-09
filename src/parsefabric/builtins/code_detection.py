@@ -1,20 +1,26 @@
-"""Source-code detection with tree-sitter grammars.
+"""Source-code detection: the `CodeDetector` ABC and its tree-sitter default.
 
-A block of text is code in a language when that language's grammar parses it
-without errors *and* every top-level node is a real construct (a definition,
-declaration, statement, call, or assignment). Bare words, literals, JSON-like
-values, and ``key: value`` lines also parse in several grammars, so they are
-not code on their own.
+With `TreeSitterCodeDetector`, a block of text is code in a language when that
+language's grammar parses it without errors *and* every top-level node is a
+real construct (a definition, declaration, statement, call, or assignment).
+Bare words, literals, JSON-like values, and ``key: value`` lines also parse in
+several grammars, so they are not code on their own.
 """
 
 from __future__ import annotations
 
+import asyncio
 import threading
+from abc import ABC, abstractmethod
 from collections import OrderedDict
-from collections.abc import Iterator, Sequence
+from typing import TYPE_CHECKING, override
 
 import tree_sitter_language_pack as language_pack
-from tree_sitter import Node, Parser
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator, Sequence
+
+    from tree_sitter import Node, Parser
 
 DEFAULT_CODE_LANGUAGES: tuple[str, ...] = (
     "python",
@@ -50,9 +56,7 @@ _STRONG_SUFFIXES = (
 )
 _WEAK = frozenset({"labeled_statement", "empty_statement", "expression_statement"})
 _CALLS = frozenset({"call", "call_expression"})
-_ASSIGNMENTS = frozenset(
-    {"assignment", "assignment_expression", "assignment_statement"}
-)
+_ASSIGNMENTS = frozenset({"assignment", "assignment_expression", "assignment_statement"})
 _COMMENTS = frozenset({"comment", "line_comment", "block_comment"})
 _SQL_STATEMENTS = frozenset(
     {
@@ -80,9 +84,7 @@ def _walk(node: Node) -> Iterator[Node]:
 
 
 def _first_keyword(node: Node) -> Node | None:
-    return next(
-        (item for item in _walk(node) if item.type.startswith("keyword_")), None
-    )
+    return next((item for item in _walk(node) if item.type.startswith("keyword_")), None)
 
 
 def _has_call(node: Node) -> bool:
@@ -126,13 +128,38 @@ def _is_construct(node: Node, language: str, text: str) -> bool:
     return node.type.endswith(_STRONG_SUFFIXES) or node.type.startswith("preproc_")
 
 
-class CodeDetector:
-    """Detect which configured grammar, if any, parses a text block as code.
+class CodeDetector(ABC):
+    """Decide whether a block of text is source code, and in which language.
 
-    Grammars are tried in the configured order. Results for short texts are
-    kept in a bounded least-recently-used cache shared by all threads; each
-    thread uses its own tree-sitter parsers. Missing grammars are downloaded
-    when the detector is created.
+    `MixedContentParser` asks its detector about lines that no route or
+    pattern claimed. Implement `detect`; override `prepare` to load models or
+    grammars before the first parse. Implementations must be safe to call
+    concurrently and, for the process backend, picklable.
+    """
+
+    async def prepare(self) -> None:  # noqa: B027 - optional hook, no-op by default
+        """Load resources ahead of the first `detect` call. The default does nothing."""
+
+    @abstractmethod
+    async def detect(self, text: str) -> str | None:
+        """Return the language ``text`` is written in, or ``None`` for non-code.
+
+        Args:
+            text: One or more lines.
+
+        Returns:
+            A language name, or ``None``.
+        """
+
+
+class TreeSitterCodeDetector(CodeDetector):
+    """Detect which configured tree-sitter grammar, if any, parses a block as code.
+
+    Grammars are tried in the configured order. Missing grammars are
+    downloaded by `prepare`, which runs in a worker thread and is awaited
+    automatically before the first detection; the constructor performs no I/O.
+    Results for short texts are kept in a bounded least-recently-used cache
+    shared by all threads; each thread uses its own tree-sitter parsers.
 
     Args:
         languages: tree-sitter language names. Grammars that accept ordinary
@@ -152,18 +179,21 @@ class CodeDetector:
         selected = tuple(dict.fromkeys(languages))
         for language in selected:
             if language in _PROSE_ACCEPTING:
-                raise ValueError(
-                    f"{language!r} parses ordinary prose, so it cannot detect code"
-                )
+                raise ValueError(f"{language!r} parses ordinary prose, so it cannot detect code")
             if not language_pack.has_language(language):
                 raise ValueError(f"unknown tree-sitter language: {language!r}")
         self._languages = selected
         self._local = threading.local()
         self._cache: OrderedDict[str, str | None] = OrderedDict()
         self._cache_lock = threading.Lock()
-        if selected:
-            # Download missing grammars now, not in the middle of a parse.
-            language_pack.prefetch(list(selected))
+        self._prepared = not selected
+
+    @override
+    async def prepare(self) -> None:
+        """Download missing grammars in a worker thread; later calls return at once."""
+        if not self._prepared:
+            await asyncio.to_thread(language_pack.prefetch, list(self._languages))
+            self._prepared = True
 
     @property
     def languages(self) -> tuple[str, ...]:
@@ -180,7 +210,8 @@ class CodeDetector:
                 parser = cache[language] = language_pack.get_parser(language)
             yield language, parser
 
-    def detect(self, text: str) -> str | None:
+    @override
+    async def detect(self, text: str) -> str | None:
         """Return the first configured language that parses ``text`` as code.
 
         Args:
@@ -198,6 +229,8 @@ class CodeDetector:
                 if text in self._cache:
                     self._cache.move_to_end(text)
                     return self._cache[text]
+        if not self._prepared:
+            await self.prepare()
         language = self._detect(text)
         if cacheable:
             with self._cache_lock:
@@ -222,7 +255,11 @@ class CodeDetector:
                 return language
         return None
 
-    def __reduce__(self) -> tuple[type[CodeDetector], tuple[tuple[str, ...]]]:
+    def __reduce__(self) -> tuple[type[TreeSitterCodeDetector], tuple[tuple[str, ...]]]:
         # Rebuild through the validating constructor; parsers and the cache
         # are per-process state and are never pickled.
-        return (CodeDetector, (self._languages,))
+        return (TreeSitterCodeDetector, (self._languages,))
+
+
+DEFAULT_CODE_DETECTOR = TreeSitterCodeDetector()
+"""Shared detector for `DEFAULT_CODE_LANGUAGES`; its cache serves every parser."""

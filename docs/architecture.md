@@ -32,9 +32,10 @@ work runs. Each layer depends only on the contracts of the layers below it.
 and parser version, so any finding can be traced back to the exact input that
 produced it.
 
-**Lossless by default.** Aggregation is managed by the package, not by
-individual parsers, and every aggregate carries a checksum. Materializing
-either returns exactly the original events or raises `IntegrityError`.
+**Lossless by default.** Every parser aggregates with the lossless
+`EvidenceAggregator` unless it chooses another, and every aggregate carries a
+checksum. Materializing either returns exactly the original events or raises
+`IntegrityError`.
 
 **Strict boundaries.** Results and aggregates use versioned JSON formats with
 exact field sets. Decoding rejects unknown fields, duplicate keys, non-finite
@@ -58,14 +59,26 @@ data you give them, and never return unchecked claims as checked.
 
 ## Extension points
 
-| Extend | By |
+Every replaceable component is an abstract base class with a default
+implementation, passed in through a constructor. See
+[Extending ParseFabric](extending/index.md) for the rules every extension
+follows and the contract checks that verify it.
+
+| Extend | By subclassing or using |
 | --- | --- |
-| Line formats | Building a `DeterministicParser` from patterns |
-| Other formats | Subclassing `Parser`, `AsyncParser` or `SemanticParser` |
-| Mixed documents | Adding routes and fence routes to `MixedContentParser` |
-| Where work runs | Subclassing `ExecutionBackend` |
-| Where telemetry goes | Subclassing `ObservabilitySink` |
-| Plugin distribution | Publishing parsers in the `parsefabric.parsers` entry-point group |
+| Line formats | [`Pattern`](extending/patterns.md) and `DeterministicParser` |
+| Other formats | [`Parser`, `AsyncParser` or `SemanticParser`](extending/parsers.md) |
+| Mixed documents | Routes and fence routes on `MixedContentParser` |
+| How events are grouped | [`Aggregator`](extending/aggregators.md) |
+| How aggregates and JSON are encoded | [`AggregateCodec` and `JSONCodec`](extending/codecs.md) |
+| How large documents are split | [`Partitioner`](extending/partitioners.md) |
+| Where work runs | [`ExecutionBackend`](extending/execution-backends.md) |
+| Where telemetry goes | [`ObservabilitySink`](extending/observability-sinks.md) |
+| Which model writes summaries | [`LanguageModel`](extending/language-models.md) |
+| How tokens are counted | [`Tokenizer`](extending/tokenizers.md) |
+| How code is recognized | [`CodeDetector`](extending/code-detectors.md) |
+| How command output is parsed | [`CommandOutputBackend`](extending/command-output-backends.md) |
+| How parsers are named and found | [`ParserRegistry`](extending/registries.md) and the `parsefabric.parsers` entry-point group |
 
 ## Learn more
 

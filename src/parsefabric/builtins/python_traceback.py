@@ -9,10 +9,9 @@ from parsefabric.capabilities import ParserCapabilities
 from parsefabric.errors import ParseError
 from parsefabric.models import JSONValue, ParseContext, ParsedEvent, ParseResult
 from parsefabric.parser import Parser
+from parsefabric.parser._text import source_text
 
-_FRAME = re.compile(
-    r'^\s*File "(?P<file>.+)", line (?P<line>\d+), in (?P<function>.+)$'
-)
+_FRAME = re.compile(r'^\s*File "(?P<file>.+)", line (?P<line>\d+), in (?P<function>.+)$')
 _EXCEPTION = re.compile(r"^(?P<exception_type>[\w.]+)(?:: (?P<message>.*))?$")
 
 
@@ -65,12 +64,7 @@ class PythonTracebackParser(Parser):
             ParseError: If no exception line is found or the text is not
                 valid Unicode.
         """
-        if isinstance(source, bytes):
-            text = source.decode("utf-8", errors="strict")
-        elif isinstance(source, str):
-            text = source
-        else:
-            raise TypeError("traceback parser accepts only str or bytes")
+        text = source_text(source, "traceback parser")
         try:
             size = len(text.encode("utf-8"))
         except UnicodeEncodeError as error:

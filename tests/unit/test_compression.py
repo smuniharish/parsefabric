@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,10 +13,12 @@ from parsefabric import (
     ParseContext,
     measure_compression,
 )
-from parsefabric.aggregation import Aggregate
 from parsefabric.builtins import TimestampedLogParser
-from parsefabric.compression import estimate_tokens
+from parsefabric.compression import DEFAULT_TOKENIZER, ApproximateTokenizer, Tokenizer
 from parsefabric.engine import ParseEngine
+
+if TYPE_CHECKING:
+    from parsefabric.aggregation import Aggregate
 
 LOG = "".join(
     f"2026-10-01T08:00:{index % 60:02d}Z ERROR db timeout on shard {index // 50}\n"
@@ -24,14 +26,11 @@ LOG = "".join(
 )
 
 
-def _aggregates(source: str) -> tuple[Aggregate, ...]:
-    async def run() -> tuple[Aggregate, ...]:
-        engine = ParseEngine()
-        parser = TimestampedLogParser()
-        result = await engine.parse(parser, source, ParseContext(source_id="ops"))
-        return await engine.aggregate(parser, result.events)
-
-    return asyncio.run(run())
+async def _aggregates(source: str) -> tuple[Aggregate, ...]:
+    engine = ParseEngine()
+    parser = TimestampedLogParser()
+    result = await engine.parse(parser, source, ParseContext(source_id="ops"))
+    return await engine.aggregate(parser, result.events)
 
 
 def _encode(aggregates: tuple[Aggregate, ...]) -> str:
@@ -60,10 +59,10 @@ def _encode(aggregates: tuple[Aggregate, ...]) -> str:
     return json.dumps(documents, separators=(",", ":"))
 
 
-def test_measures_application_output_against_utf8_input() -> None:
-    aggregates = _aggregates(LOG)
+async def test_measures_application_output_against_utf8_input() -> None:
+    aggregates = await _aggregates(LOG)
     wire = _encode(aggregates)
-    metrics = measure_compression(LOG, wire)
+    metrics = await measure_compression(LOG, wire)
 
     assert isinstance(metrics, CompressionMetrics)
     assert metrics.input_bytes == len(LOG.encode())
@@ -71,57 +70,82 @@ def test_measures_application_output_against_utf8_input() -> None:
     assert metrics.bytes_saved == metrics.input_bytes - metrics.output_bytes
     assert metrics.reduction_percent is not None
     assert metrics.reduction_percent > 85
-    assert metrics.input_tokens == estimate_tokens(LOG)
-    assert metrics.output_tokens == estimate_tokens(wire)
+    assert metrics.input_tokens == await DEFAULT_TOKENIZER.count(LOG)
+    assert metrics.output_tokens == await DEFAULT_TOKENIZER.count(wire)
     assert sum(item.count for item in aggregates) == 200
 
 
-def test_small_inputs_report_negative_savings_honestly() -> None:
+async def test_small_inputs_report_negative_savings_honestly() -> None:
     source = "2026-10-01T08:00:00Z INFO up\n"
-    metrics = measure_compression(source, _encode(_aggregates(source)))
+    metrics = await measure_compression(source, _encode(await _aggregates(source)))
     assert metrics.bytes_saved < 0
     assert metrics.reduction_percent is not None
     assert metrics.reduction_percent < 0
 
 
-def test_empty_input_has_no_percentages() -> None:
-    metrics = measure_compression("", "[]")
+async def test_empty_input_has_no_percentages() -> None:
+    metrics = await measure_compression("", "[]")
     assert metrics.output_bytes == 2
     assert metrics.reduction_percent is None
     assert metrics.token_reduction_percent is None
 
 
-def test_custom_token_estimator_and_bytes_input_and_output() -> None:
-    wire = _encode(_aggregates(LOG))
-    metrics = measure_compression(
-        LOG.encode(), wire.encode(), token_estimator=lambda text: len(text.split())
-    )
+class WordTokenizer(Tokenizer):
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+
+    async def count(self, text: str) -> int:
+        self.seen.append(text)
+        return len(text.split())
+
+
+async def test_custom_tokenizer_counts_text_and_decoded_bytes() -> None:
+    wire = _encode(await _aggregates(LOG))
+    tokenizer = WordTokenizer()
+    metrics = await measure_compression(LOG.encode(), wire.encode(), tokenizer=tokenizer)
     assert metrics.input_tokens == len(LOG.split())
     assert metrics.output_bytes == len(wire.encode())
+    tokenizer.seen.clear()
+    await measure_compression(b"\xffok", "x", tokenizer=tokenizer)
+    assert tokenizer.seen == ["\ufffdok", "x"]
 
 
-def test_estimate_tokens_rounds_up_utf8_bytes() -> None:
-    assert estimate_tokens("") == 0
-    assert estimate_tokens("abcde") == 2
-    assert estimate_tokens("\u00e9") == 1
+async def test_approximate_tokenizer_rounds_up_utf8_bytes() -> None:
+    assert await DEFAULT_TOKENIZER.count("") == 0
+    assert await DEFAULT_TOKENIZER.count("abcde") == 2
+    assert await DEFAULT_TOKENIZER.count("\u00e9") == 1
+    assert DEFAULT_TOKENIZER.bytes_per_token == 4
+    assert await ApproximateTokenizer(1).count("abc") == 3
 
 
-def test_bytes_are_estimated_from_their_length_even_when_not_utf8() -> None:
-    metrics = measure_compression(b"\xff" * 400, b"\xc3\xa9")
+@pytest.mark.parametrize("bad", [0, -1, True, 2.5, "4"])
+def test_approximate_tokenizer_rejects_invalid_ratios(bad: object) -> None:
+    with pytest.raises(ValueError, match="bytes_per_token"):
+        # pyrefly: ignore[bad-argument-type]
+        ApproximateTokenizer(bad)
+
+
+async def test_bytes_are_estimated_from_their_length_even_when_not_utf8() -> None:
+    metrics = await measure_compression(b"\xff" * 400, b"\xc3\xa9")
     assert (metrics.input_bytes, metrics.input_tokens) == (400, 100)
     assert (metrics.output_bytes, metrics.output_tokens) == (2, 1)
-    seen: list[str] = []
-    measure_compression(b"\xffok", "x", token_estimator=lambda t: seen.append(t) or 0)
-    assert seen == ["\ufffdok", "x"]
 
 
 @pytest.mark.parametrize("bad", [None, 3, ["x"]])
-def test_rejects_invalid_source(bad: object) -> None:
+async def test_rejects_invalid_source(bad: object) -> None:
     with pytest.raises(TypeError, match="source"):
-        measure_compression(bad, "")  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        await measure_compression(bad, "")
 
 
 @pytest.mark.parametrize("bad", [None, (), ["x"]])
-def test_rejects_unencoded_output(bad: object) -> None:
+async def test_rejects_unencoded_output(bad: object) -> None:
     with pytest.raises(TypeError, match="output"):
-        measure_compression("x", bad)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        await measure_compression("x", bad)
+
+
+async def test_rejects_a_tokenizer_that_is_not_a_tokenizer() -> None:
+    with pytest.raises(TypeError, match="Tokenizer"):
+        # pyrefly: ignore[bad-argument-type]
+        await measure_compression("x", "y", tokenizer=len)

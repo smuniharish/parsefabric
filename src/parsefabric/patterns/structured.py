@@ -35,9 +35,7 @@ class StructuredPattern(PredicatePattern):
         event_type: str | None = None,
         severity: str | None = None,
     ) -> None:
-        if not callable(predicate) or (
-            extractor is not None and not callable(extractor)
-        ):
+        if not callable(predicate) or (extractor is not None and not callable(extractor)):
             raise ValueError("predicate and extractor must be callable")
 
         def mapping_predicate(value: object) -> bool:

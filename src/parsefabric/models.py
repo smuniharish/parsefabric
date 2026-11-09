@@ -231,12 +231,9 @@ class ParsedEvent:
         check_text(self.event_type, "event_type")
         if not isinstance(self.attributes, dict):
             raise ValueError("event attributes must be a JSON object")
-        object.__setattr__(
-            self, "attributes", copy_json(self.attributes, "event attributes")
-        )
+        object.__setattr__(self, "attributes", copy_json(self.attributes, "event attributes"))
         if self.timestamp is not None and (
-            not isinstance(self.timestamp, datetime)
-            or self.timestamp.utcoffset() is None
+            not isinstance(self.timestamp, datetime) or self.timestamp.utcoffset() is None
         ):
             raise ValueError("event timestamps must be timezone-aware datetimes")
         if self.severity is not None:
@@ -311,9 +308,7 @@ class ParsedEvent:
         """
         fields = require_object(data, "event", _EVENT_FIELDS)
         if fields["schema_version"] != SCHEMA_VERSION:
-            raise ValueError(
-                f"unsupported event schema version: {fields['schema_version']!r}"
-            )
+            raise ValueError(f"unsupported event schema version: {fields['schema_version']!r}")
         return cls(
             event_type=fields["event_type"],
             attributes=fields["attributes"],
@@ -416,16 +411,12 @@ class ParseResult:
     llm_result: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "events", _tuple_of(self.events, ParsedEvent, "result events")
-        )
+        object.__setattr__(self, "events", _tuple_of(self.events, ParsedEvent, "result events"))
         warnings = _tuple_of(self.warnings, str, "result warnings")
         for warning in warnings:
             check_text(warning, "result warnings")
         object.__setattr__(self, "warnings", warnings)
-        object.__setattr__(
-            self, "errors", _tuple_of(self.errors, ParseIssue, "result errors")
-        )
+        object.__setattr__(self, "errors", _tuple_of(self.errors, ParseIssue, "result errors"))
         statistics = _tuple_of(
             self.pattern_statistics, PatternStatistic, "result pattern statistics"
         )
@@ -463,9 +454,7 @@ class ParseResult:
             "events": [event._to_wire() for event in self.events],
             "warnings": list(self.warnings),
             "errors": [issue.to_dict() for issue in self.errors],
-            "pattern_statistics": [
-                statistic.to_dict() for statistic in self.pattern_statistics
-            ],
+            "pattern_statistics": [statistic.to_dict() for statistic in self.pattern_statistics],
         }
 
     @classmethod
@@ -484,20 +473,13 @@ class ParseResult:
         """
         fields = require_object(data, "parse result", _RESULT_FIELDS)
         if fields["schema_version"] != SCHEMA_VERSION:
-            raise ValueError(
-                f"unsupported result schema version: {fields['schema_version']!r}"
-            )
+            raise ValueError(f"unsupported result schema version: {fields['schema_version']!r}")
         return cls(
-            events=tuple(
-                ParsedEvent.from_dict(item) for item in _list(fields, "events")
-            ),
+            events=tuple(ParsedEvent.from_dict(item) for item in _list(fields, "events")),
             warnings=tuple(_list(fields, "warnings")),
-            errors=tuple(
-                ParseIssue.from_dict(item) for item in _list(fields, "errors")
-            ),
+            errors=tuple(ParseIssue.from_dict(item) for item in _list(fields, "errors")),
             pattern_statistics=tuple(
-                PatternStatistic.from_dict(item)
-                for item in _list(fields, "pattern_statistics")
+                PatternStatistic.from_dict(item) for item in _list(fields, "pattern_statistics")
             ),
             parser_name=fields["parser_name"],
             parser_version=fields["parser_version"],

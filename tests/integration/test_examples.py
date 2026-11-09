@@ -21,9 +21,7 @@ def test_offline_examples_print_their_recorded_output() -> None:
 
 
 def test_failing_examples_are_reported(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        verify_examples.subprocess, "run", _completed(returncode=1, stderr="boom")
-    )
+    monkeypatch.setattr(verify_examples.subprocess, "run", _completed(returncode=1, stderr="boom"))
     with pytest.raises(RuntimeError, match="boom"):
         verify_examples.verify()
 
@@ -36,9 +34,7 @@ def test_silent_examples_are_reported(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_changed_output_is_reported_as_a_diff(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verify_examples, "OFFLINE", ("quickstart.py",))
-    monkeypatch.setattr(
-        verify_examples.subprocess, "run", _completed(stdout="different\n")
-    )
+    monkeypatch.setattr(verify_examples.subprocess, "run", _completed(stdout="different\n"))
     with pytest.raises(RuntimeError, match=r"(?s)example output changed.*\+different"):
         verify_examples.verify()
 

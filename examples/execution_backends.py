@@ -36,13 +36,9 @@ class AuditedBackend(ExecutionBackend):
     ) -> R: ...
 
     @overload
-    async def run[R](
-        self, function: Callable[..., R], /, *args: object, **kwargs: object
-    ) -> R: ...
+    async def run[R](self, function: Callable[..., R], /, *args: object, **kwargs: object) -> R: ...
 
-    async def run(
-        self, function: Callable[..., Any], /, *args: object, **kwargs: object
-    ) -> Any:
+    async def run(self, function: Callable[..., Any], /, *args: object, **kwargs: object) -> Any:
         self.submitted += 1
         return await self._delegate.run(function, *args, **kwargs)
 
@@ -67,8 +63,7 @@ async def main() -> None:
 
     async with AuditedBackend(ProcessExecutionBackend(max_workers=2)) as audited:
         events = [
-            len(result.events)
-            async for result in audited.map(parser.parse, LINES, max_in_flight=4)
+            len(result.events) async for result in audited.map(parser.parse, LINES, max_in_flight=4)
         ]
     print(f"mapped {len(events)} inputs, {sum(events)} events")
     print(f"audited submissions: {audited.submitted}")

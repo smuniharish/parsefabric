@@ -1,15 +1,35 @@
 ---
 name: parsefabric
-description: Integrate, configure, extend, debug, or test the parsefabric Python library, which turns logs, JSON, command output, tracebacks and mixed text into structured events with line and byte-span evidence. Use when building parsers or patterns, routing mixed documents, aggregating, storing or rebuilding parsed events losslessly, streaming or partitioning parsing across threads, processes or clusters, wiring OpenTelemetry or structlog lifecycle events, or producing checked LLM summaries of parsed evidence.
+description: >-
+  Use this skill when an application parses operational text with ParseFabric
+  (the parsefabric package): application or timestamped logs, JSON documents,
+  Python tracebacks, command output such as df, or documents that mix logs,
+  JSON, code and prose. That includes keeping line and byte-span evidence for
+  every event, storing events as compact checksummed aggregates and rebuilding
+  them exactly, streaming or partitioning parsing across threads, processes or
+  a cluster, sending lifecycle events to OpenTelemetry or structlog, writing
+  checked language-model summaries of parsed evidence, and debugging an
+  IntegrityError, missing events or wrong line numbers. Do not use it to
+  subclass a ParseFabric abstract base class (a custom Parser, Pattern,
+  Aggregator, codec, partitioner, execution backend, sink, language model,
+  tokenizer, code detector, command output backend or registry); the
+  parsefabric-extend skill covers those. Do not use it for log shipping,
+  full-text search or metrics.
+license: Apache-2.0
+compatibility: >-
+  Python 3.12 or newer with parsefabric 1.x installed (pip install
+  parsefabric). The scripts run offline; the langchain extra is optional.
+metadata:
+  version: "1.0.0"
+  documentation: "https://parsefabric.readthedocs.io/en/latest/"
 ---
 
-# parsefabric
+# Using ParseFabric
 
-Use this skill for the existing `parsefabric` Python package (import name
-`parsefabric`, Python 3.12+). It is a parsing library, not a log storage
-service, a scheduler, or an LLM framework.
-
-The most common imports are:
+ParseFabric turns operational text into `ParsedEvent`s. Each event records
+its source, line, UTF-8 byte span, pattern and parser version. Aggregates
+store repetitive events compactly and rebuild them exactly. Everything that
+does work is `async`.
 
 ```python
 from parsefabric import ParseContext, ParseEngine
@@ -17,192 +37,107 @@ from parsefabric.builtins import ApplicationLogParser, MixedContentParser
 from parsefabric.patterns import RegexPattern
 ```
 
-The authoritative documentation is
-[parsefabric.readthedocs.io](https://parsefabric.readthedocs.io/en/latest/),
-and the source, examples and tests are at
-[github.com/smuniharish/parsefabric](https://github.com/smuniharish/parsefabric).
-Read [Parsing and evidence](https://parsefabric.readthedocs.io/en/latest/guide/parsing/)
-before changing how results are produced, and the
-[API reference](https://parsefabric.readthedocs.io/en/latest/reference/) before
-calling any API this file does not show.
+## Workflow
 
-## Activate when
+1. Run `python scripts/verify_setup.py` (add `--langchain` when the project
+   uses the LangChain integration). Fix every FAIL before you change code.
+2. Find the existing `ParseEngine` usage, parser construction and any stored
+   aggregates. Stored aggregates are rebuilt by the same parser name and
+   version, so never change a parser's output without bumping its version.
+3. Choose a built-in parser from the table below. Read
+   [references/parsers.md](references/parsers.md) for patterns, routes, fence
+   routes and command output. If no built-in parser fits, switch to the
+   parsefabric-extend skill.
+4. Parse with `await ParseEngine().parse(parser, source, ParseContext(source_id=...))`.
+   Pass `continue_on_error=True` when one bad input must not stop a batch,
+   and read `result.errors`.
+5. To store events, aggregate one source document at a time, serialize, and
+   prove that `materialize` rebuilds them. Read
+   [references/storage.md](references/storage.md).
+6. For many inputs, large files, or clusters, read
+   [references/execution.md](references/execution.md). For telemetry, read
+   [references/observability.md](references/observability.md). For model
+   summaries, read [references/summaries.md](references/summaries.md).
+7. Copy `assets/test_parsing.py` into the project's tests, point it at the
+   real parser and a realistic input, and make it pass.
+8. Run `python scripts/verify_setup.py` again, then the project's own tests.
+   Do not finish until both pass.
 
-Use `parsefabric` when an application must extract structured events from
-operational text and keep evidence of where each event came from. Typical
-indicators:
-
-- parsing application logs, timestamped logs, JSON documents, Python
-  tracebacks or command output such as `df`;
-- documents that mix log lines, JSON, fenced or unfenced code and prose;
-- events that must be traced to a source, line, byte span and pattern;
-- storing repetitive events compactly and rebuilding them exactly later;
-- parsing streams with bounded concurrency, or large files across processes
-  or a cluster;
-- summarizing parsed evidence with a language model without sending it the
-  raw input.
-
-Do not select it for general-purpose text generation, log shipping or
-storage, full-text search, or as a replacement for a metrics system.
-
-## Required workflow
-
-### Before changing an application
-
-1. Check the installed version with `parsefabric.__version__` and the
-   application's dependency manifest. The package requires Python 3.12 or
-   newer.
-2. Find the existing parser construction, `ParseEngine` usage and any stored
-   aggregates. Stored aggregates must keep being readable by the same parser
-   name and version.
-3. Prefer a built-in parser. Write a custom parser only when no built-in
-   parser or pattern set fits.
-
-### Choose a parser
+## Choose a parser
 
 | Input | Use |
 | --- | --- |
 | Free-form application logs | `ApplicationLogParser()`; extend `default_patterns()` from `parsefabric.builtins.application_log` |
-| Every line is `TIMESTAMP LEVEL message` with a time zone | `TimestampedLogParser()`, or `line_pattern=` with `at`, `level` and `message` groups |
+| Lines of `TIMESTAMP LEVEL message` with a time zone | `TimestampedLogParser()`, or `line_pattern=` with `at`, `level` and `message` groups |
 | One JSON document | `JSONParser()` |
 | One Python traceback | `PythonTracebackParser()` |
-| Output of a command that jc supports | `CLIOutputParser(command="df")` |
+| Output of a command jc supports | `CLIOutputParser(command="df")` |
 | A line format of your own | `DeterministicParser([...patterns], name=..., version=...)` |
-| Logs, JSON, code and prose mixed together | `MixedContentParser(routes=[...], fence_routes={...})` |
-| A non-line format | Subclass `Parser` (deterministic), `AsyncParser` (awaits I/O) or `SemanticParser` (model-backed) |
+| Logs, JSON, code and prose together | `MixedContentParser(routes=[...], fence_routes={...})` |
 
-### Parse and keep the evidence
+## Rules
 
-1. Pass `ParseContext(source_id=...)` so every event names its source.
-2. Run parsers through `ParseEngine().parse(parser, source, context)`; it
-   fills missing evidence and emits lifecycle events. All parsing is `async`.
-3. Pass `continue_on_error=True` when one bad input must not stop a batch, and
-   read the recorded `result.errors`.
-4. Read `event.evidence.line_number`, `start_offset`, `end_offset` (UTF-8
-   bytes) and `pattern_name` instead of re-deriving positions.
-
-### Write patterns and parsers
-
-- Pattern names must be unique within a parser; higher `priority` runs first.
-- `RegexPattern` uses `re.search`; named groups become attributes. Keep
-  expressions linear-time: anchor with `^` and avoid nested or overlapping
-  quantifiers.
-- A `Parser` subclass implements `name`, `version`, `capabilities` and
-  `parse`. Declare capabilities truthfully: `deterministic` only if the same
-  input and context always give the same events, `parallel_safe` only if one
-  instance can parse concurrently.
-- Never define `aggregator`, `aggregate`, `merge_aggregates`, `serialize` or
-  `deserialize` in a subclass; the package manages them.
-- Bump a parser's `version` whenever its output for the same input changes.
-
-### Aggregate, store and rebuild
-
-1. Aggregate the events of **one source document**, in source order, with
-   `await engine.aggregate(parser, events)`.
-2. Store with `parser.serialize(aggregates)` and load with
-   `parser.deserialize(text)`; the `parsefabric.aggregates/1` format is
-   strict.
-3. Rebuild with `await engine.materialize(parser, source, aggregates, context)`,
-   passing the exact source, context and parser version for deterministic
-   parsers, or `None` as the source for parsers that retain events.
-4. Treat `IntegrityError` as a real mismatch; do not catch it to continue.
-
-### Stream, parallelize and partition
-
-- `parse_iter` keeps input order; `parse_async_iter(max_concurrency=n)`
-  yields in completion order and requires a `parallel_safe` parser.
-- Use `ThreadExecutionBackend` for blocking libraries and
-  `ProcessExecutionBackend` for CPU-heavy work. Process work must be
-  picklable, defined at module level, and started under
-  `if __name__ == "__main__":`.
-- Split large documents with `LinePartitioner` only for parsers with `"line"`
-  framing (such as `ApplicationLogParser`). Parse each partition with
-  `ParseContext(source_offset=partition.start_offset)` and re-base line
-  numbers with `partition.start_line`.
-
-### Observability and summaries
-
-- Pass an `OpenTelemetryObservabilitySink` or `LoggingObservabilitySink` to
-  `ParseEngine(sink)`. Configure the OpenTelemetry SDK and structlog in the
-  application, never inside parsers.
-- `EvidenceSummarizer(model)` accepts any LangChain chat model and summarizes
-  aggregates, not raw input. Handle `SummaryValidationError`; never present
-  unchecked model text as a checked summary. Read API keys from the
-  environment.
-
-## Example
-
-```python
-import asyncio
-
-from parsefabric import ParseContext, ParseEngine
-from parsefabric.builtins import ApplicationLogParser
-
-
-async def main() -> None:
-    engine = ParseEngine()
-    parser = ApplicationLogParser()
-    source = "db timeout\ndb timeout\npermission denied for user 7\n"
-    context = ParseContext(source_id="app.log")
-
-    result = await engine.parse(parser, source, context)
-    aggregates = await engine.aggregate(parser, result.events)
-    stored = parser.serialize(aggregates)
-    restored = await engine.materialize(
-        parser, source, parser.deserialize(stored), context
-    )
-    print([event.event_type for event in result.events])
-    print("rebuilt exactly:", restored == result.events)
-
-
-asyncio.run(main())
-```
-
-Output:
-
-```text
-['timeout', 'timeout', 'authorization_failure']
-rebuilt exactly: True
-```
-
-## Integration rules
-
-- Keep evidence: do not strip `evidence` or replace it with positions you
-  compute yourself.
-- Keep parsers independent of where they run; choose execution backends in
-  application code.
-- Redact secrets and personal data before parsing if results are stored or
+- Keep evidence. Read `event.evidence.line_number`, `start_offset`,
+  `end_offset` and `pattern_name`; never recompute positions yourself.
+- Aggregate the events of **one** source document, in source order. Combine
+  aggregates of different documents only with `engine.merge_aggregates`.
+- Treat `IntegrityError` as a real mismatch between the stored aggregates and
+  the source, context or parser version. Never catch it to carry on.
+- Declare nothing you have not verified: concurrency needs a
+  `parallel_safe` parser, partitioning needs `"line"` framing.
+- Keep parsers independent of where they run. Choose execution backends,
+  sinks and models in application code and pass them in.
+- Redact secrets and personal data before parsing when results are stored or
   sent to a model; events keep the text they describe.
-- Treat parsed text as untrusted. Never compile regular expressions supplied
-  by untrusted users in-process.
-- Pre-download tree-sitter grammars for offline deployments, or construct
-  `MixedContentParser(code_languages=())` when code detection is not needed.
+- Never compile regular expressions supplied by untrusted users.
+- Configure OpenTelemetry, structlog and model providers in the
+  application. ParseFabric never configures them and has no global registry.
 
-## Prohibited shortcuts
+## Gotchas
 
-Do **not**:
+- `ParseEngine.parse` is a coroutine. Calling it without `await` returns a
+  coroutine, not a result.
+- One input line can produce several events. `ApplicationLogParser` reports
+  `timeout` and `error` for "ERROR payment gateway timed out".
+- `EvidenceAggregator` keeps one entry per distinct message within each
+  pattern and severity, with every position in source order. Repeats far
+  apart still share one entry.
+- `materialize` for a deterministic parser needs the exact source, context
+  and parser version used to parse. Pass `None` as the source only for
+  parsers whose aggregator retains events.
+- `parse_async_iter(max_concurrency=n)` yields in completion order;
+  `parse_iter` keeps input order.
+- `ProcessExecutionBackend` needs picklable, module-level callables and an
+  `if __name__ == "__main__":` guard.
+- `MixedContentParser` downloads tree-sitter grammars on first use. For
+  offline deployments, run `await TreeSitterCodeDetector().prepare()` while
+  building the image, or pass `code_detector=None`.
 
-- invent imports, parser names, constructor options, event types or
-  environment variables; check the API reference;
-- declare capabilities a parser does not have to unlock concurrency or
-  partitioning;
-- mix events from several sources in one `aggregate` call, or merge
-  aggregates of the same source;
-- catch `IntegrityError`, `SerializationError` or `SummaryValidationError` to
-  hide them;
-- edit `src/parsefabric/` when the task is an application integration.
+## Checklist before you finish
 
-## Verification checklist
+- [ ] `scripts/verify_setup.py` passes after the change.
+- [ ] A test asserts event types, attributes and evidence for a realistic input.
+- [ ] When events are stored, a test asserts that `materialize` rebuilds them exactly.
+- [ ] No `IntegrityError`, `SerializationError` or `SummaryValidationError` is silenced.
+- [ ] The project's formatter, linter, type checker and tests pass.
 
-For an application change, add a focused test that parses a realistic input
-and asserts the event types, attributes and evidence (`line_number`, byte
-span, `pattern_name`). When events are stored, also assert that
-`materialize` rebuilds them exactly. Run the project's formatter, linter, type
-checker and tests.
+## Files
 
-For changes to this skill, follow the
-[validation process](https://github.com/smuniharish/parsefabric/blob/main/parsefabric-skills/validation/README.md).
-Consult the [documentation](https://parsefabric.readthedocs.io/en/latest/),
-[examples](https://github.com/smuniharish/parsefabric/tree/main/examples) and
-[tests](https://github.com/smuniharish/parsefabric/tree/main/tests) rather than
-expanding this file into a second manual.
+- `scripts/verify_setup.py`: checks Python, ParseFabric and its dependency
+  ranges, then parses, stores and rebuilds a sample offline. Run `--help`
+  for options; `--json` prints one object. Exit codes are 0 (all pass) and
+  1 (a check failed).
+- `assets/test_parsing.py`: tests to copy into the project. They assert
+  evidence, a lossless round trip, and that a changed source is rejected.
+- [references/parsers.md](references/parsers.md): built-in parsers,
+  patterns, mixed content and command output.
+- [references/storage.md](references/storage.md): aggregation, the stored
+  format, rebuilding, and measuring the reduction.
+- [references/execution.md](references/execution.md): streaming, execution
+  backends, partitioning and distributed runtimes.
+- [references/observability.md](references/observability.md): lifecycle
+  events, OpenTelemetry and structlog.
+- [references/summaries.md](references/summaries.md): checked summaries,
+  language models and LangChain.
+- [references/troubleshooting.md](references/troubleshooting.md): symptoms,
+  causes and fixes.

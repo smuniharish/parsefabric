@@ -25,7 +25,6 @@ class StatefulSequenceParser(Parser):
     def capabilities(self) -> ParserCapabilities:
         return ParserCapabilities(
             deterministic=True,
-            incremental=True,
             stateful=True,
             requires_order=True,
         )

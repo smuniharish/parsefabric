@@ -1,6 +1,9 @@
 import asyncio
+import contextvars
 import gc
 import multiprocessing
+import pickle
+import threading
 import time
 
 import pytest
@@ -8,9 +11,11 @@ import pytest
 from parsefabric.builtins import ApplicationLogParser
 from parsefabric.execution import (
     AsyncExecutionBackend,
+    ExecutorBackend,
     ProcessExecutionBackend,
     ThreadExecutionBackend,
 )
+from parsefabric.execution._executor import _process_loops, _WorkerLoops
 from parsefabric.observability import (
     LifecycleEvent,
     ObservabilitySink,
@@ -23,7 +28,7 @@ class RecordingSink(ObservabilitySink):
     def __init__(self) -> None:
         self.events: list[LifecycleEvent] = []
 
-    def emit(self, event: LifecycleEvent) -> None:
+    async def emit(self, event: LifecycleEvent) -> None:
         self.events.append(event)
 
 
@@ -31,8 +36,9 @@ def _square(value: int) -> int:
     return value * value
 
 
-def _parse_in_worker(parser: Parser, text: str) -> str:
-    return asyncio.run(parser.parse(text)).events[0].event_type
+async def _parse_in_worker(parser: Parser, text: str) -> tuple[str, int]:
+    result = await parser.parse(text)
+    return result.events[0].event_type, id(asyncio.get_running_loop())
 
 
 def _slow_value(delay: float) -> str:
@@ -82,9 +88,7 @@ async def test_execution_map_observes_other_completed_failures_on_abort() -> Non
     messages: list[str] = []
     sink = RecordingSink()
 
-    def record_exception(
-        loop: asyncio.AbstractEventLoop, context: dict[str, object]
-    ) -> None:
+    def record_exception(loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
         messages.append(str(context["message"]))
 
     async def fail(value: int) -> int:
@@ -117,10 +121,8 @@ async def test_thread_backend_runs_sync_callable() -> None:
 async def test_process_backend_serializes_top_level_callables() -> None:
     async with ProcessExecutionBackend(max_workers=1) as backend:
         assert await backend.run(_square, 6) == 36
-        assert (
-            await backend.run(_parse_in_worker, ApplicationLogParser(), "timeout")
-            == "timeout"
-        )
+        event_type, _ = await backend.run(_parse_in_worker, ApplicationLogParser(), "timeout")
+        assert event_type == "timeout"
 
 
 async def test_process_backend_uses_spawn_even_with_active_threads() -> None:
@@ -196,11 +198,83 @@ async def test_thread_backend_propagates_opentelemetry_context() -> None:
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
 
-    sink = OpenTelemetryObservabilitySink(
-        TracerProvider().get_tracer("parsefabric-thread-test")
-    )
+    sink = OpenTelemetryObservabilitySink(TracerProvider().get_tracer("parsefabric-thread-test"))
     async with ThreadExecutionBackend(max_workers=1, sink=sink) as backend:
         is_recording = await backend.run(
             lambda: trace.get_current_span().get_span_context().is_valid
         )
     assert is_recording
+
+
+_REQUEST: contextvars.ContextVar[str] = contextvars.ContextVar("request", default="none")
+
+
+async def _loop_and_request() -> tuple[asyncio.AbstractEventLoop, str]:
+    await asyncio.sleep(0)
+    return asyncio.get_running_loop(), _REQUEST.get()
+
+
+async def test_worker_threads_reuse_one_event_loop_and_close_it_on_shutdown() -> None:
+    backend = ThreadExecutionBackend(max_workers=1)
+    _REQUEST.set("first")
+    first_loop, first_request = await backend.run(_loop_and_request)
+    _REQUEST.set("second")
+    second_loop, second_request = await backend.run(_loop_and_request)
+    assert first_loop is second_loop
+    assert (first_request, second_request) == ("first", "second")
+    assert not first_loop.is_closed()
+    await backend.shutdown()
+    assert first_loop.is_closed()
+    assert backend.closed
+
+
+async def test_process_workers_reuse_their_event_loop() -> None:
+    async with ProcessExecutionBackend(max_workers=1) as backend:
+        first = await backend.run(_parse_in_worker, ApplicationLogParser(), "timeout")
+        second = await backend.run(_parse_in_worker, ApplicationLogParser(), "timeout")
+    assert first == second
+
+
+def test_pickled_worker_loops_resolve_to_the_process_registry() -> None:
+    restored = pickle.loads(pickle.dumps(_WorkerLoops()))
+    assert restored is _process_loops() is _process_loops()
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True, "1"])
+def test_shutdown_timeout_must_be_positive_and_finite(timeout: object) -> None:
+    with pytest.raises(ValueError, match="shutdown_timeout"):
+        # pyrefly: ignore[bad-argument-type]
+        ThreadExecutionBackend(shutdown_timeout=timeout)
+    with pytest.raises(ValueError, match="shutdown_timeout"):
+        # pyrefly: ignore[bad-argument-type]
+        ProcessExecutionBackend(shutdown_timeout=timeout)
+
+
+async def test_shutdown_timeout_bounds_waiting_for_running_work() -> None:
+    release = threading.Event()
+    backend = ThreadExecutionBackend(max_workers=1, shutdown_timeout=0.05)
+    running = asyncio.create_task(backend.run(release.wait, 5))
+    await asyncio.sleep(0.05)
+    with pytest.raises(TimeoutError, match=r"did not shut down within 0\.05 seconds"):
+        await backend.shutdown()
+    release.set()
+    assert await running is True
+    await backend.shutdown()
+
+
+async def test_shutdown_during_submission_rejects_the_call() -> None:
+    class ShutdownOnSubmit(RecordingSink):
+        backend: ExecutorBackend
+
+        async def emit(self, event: LifecycleEvent) -> None:
+            await super().emit(event)
+            if event.name == "ExecutionSubmitted":
+                await self.backend.shutdown()
+
+    sink = ShutdownOnSubmit()
+    sink.backend = ThreadExecutionBackend(max_workers=1, sink=sink)
+    with pytest.raises(RuntimeError, match="shut down"):
+        await sink.backend.run(_square, 2)
+    assert [event.name for event in sink.events] == ["ExecutionSubmitted", "ExecutionFailed"]
+    with pytest.raises(RuntimeError, match="shut down"):
+        await sink.backend.run(_square, 2)

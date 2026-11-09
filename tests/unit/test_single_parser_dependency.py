@@ -97,7 +97,7 @@ async def test_custom_parsers_aggregate_via_engine(base):
     assert materialized[0].attributes["value"] == {"state": "ready"}
 
 
-async def test_grouped_runs_round_trip_event_attributes() -> None:
+async def test_grouped_messages_round_trip_event_attributes() -> None:
     parser = DeterministicParser(
         [RegexPattern("state", r"^(?P<state>\w+)$", event_type="state")],
         name="states",
@@ -108,9 +108,8 @@ async def test_grouped_runs_round_trip_event_attributes() -> None:
     (document,) = await parser.aggregate(result.events)
     # Each entry carries the event's content; positions only record order.
     assert rows(document) == [
-        (None, {"state": "ready"}, "1,2", 2),
+        (None, {"state": "ready"}, "1,2,4", 3),
         (None, {"state": "waiting"}, "3", 1),
-        (None, {"state": "ready"}, "4", 1),
     ]
     assert document.groups[0].pattern == "state"
     assert not document.retains_events
@@ -138,19 +137,13 @@ async def test_tampered_occurrence_count_fails_materialization() -> None:
     with pytest.raises(ValueError, match="add up to the aggregate count"):
         replace(
             document,
-            groups=(
-                replace(
-                    group, evidence=(replace(entry, occurrences=2, positions=(1, 1)),)
-                ),
-            ),
+            groups=(replace(group, evidence=(replace(entry, occurrences=2, positions=(1, 1)),)),),
         )
 
     tampered = replace(
         document,
         count=2,
-        groups=(
-            replace(group, evidence=(replace(entry, occurrences=2, positions=(1, 1)),)),
-        ),
+        groups=(replace(group, evidence=(replace(entry, occurrences=2, positions=(1, 1)),)),),
     )
     with pytest.raises(IntegrityError, match="do not match"):
         await ParseEngine().materialize(parser, source, (tampered,), context)

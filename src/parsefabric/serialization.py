@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from typing import TYPE_CHECKING
 
 from parsefabric import _json
 from parsefabric.errors import SerializationError
 from parsefabric.models import ParseResult
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 __all__ = [
     "dumps_result",
@@ -29,7 +32,7 @@ def dumps_result(result: ParseResult) -> str:
     """
     if not isinstance(result, ParseResult):
         raise TypeError("dumps_result expects a ParseResult")
-    return _json.dumps_validated(result._to_wire())
+    return _json.dumps(result._to_wire())
 
 
 def loads_result(payload: str | bytes) -> ParseResult:

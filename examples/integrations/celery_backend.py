@@ -13,9 +13,8 @@ import os
 import platform
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import asdict
-from typing import Any, TypedDict, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Any, TypedDict, overload
 
 from celery import Celery
 from celery.exceptions import TimeoutError as CeleryTimeoutError
@@ -25,17 +24,18 @@ from examples.integrations.sync_bridge import run_sync
 from parsefabric.builtins import ApplicationLogParser
 from parsefabric.execution import ExecutionBackend
 from parsefabric.models import ParseContext, ParseResult
-from parsefabric.observability import LifecycleEvent, ObservabilitySink
 from parsefabric.serialization import dumps_result, loads_result
 
-T = TypeVar("T")
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Coroutine
+
+    from parsefabric.observability import ObservabilitySink
+
 MAX_SOURCE_BYTES = 1_048_576
 TASK_NAME = "parsefabric.examples.parse_application_log.v1"
 APPLICATION_LOG_PARSER = ("application-log", "1")
 MIXED_CONTENT_PARSER = ("mixed-content", "1")
-_JOB_FIELDS = frozenset(
-    ("schema_version", "parser_name", "parser_version", "source", "context")
-)
+_JOB_FIELDS = frozenset(("schema_version", "parser_name", "parser_version", "source", "context"))
 EXPECTED_MIXED_EVENT_TYPES = {
     "code": 1,
     "error": 1,
@@ -97,16 +97,12 @@ celery_app.conf.update(
 )
 
 
-def parse_application_log(
-    source: str, context: ParseContext | None = None
-) -> ParseResult:
+def parse_application_log(source: str, context: ParseContext | None = None) -> ParseResult:
     """Parse application logs using the fixed worker allowlist."""
     return run_sync(ApplicationLogParser().parse(source, context))
 
 
-def parse_mixed_content(
-    source: str, context: ParseContext | None = None
-) -> ParseResult:
+def parse_mixed_content(source: str, context: ParseContext | None = None) -> ParseResult:
     """Parse the shared, deterministic mixed-content fixture."""
     return run_sync(mixed_parser().parse(source, context))
 
@@ -133,9 +129,7 @@ def _validated_minimum_rate(value: str | None) -> float | None:
         return None
     minimum = float(value)
     if not math.isfinite(minimum) or minimum <= 0:
-        raise ValueError(
-            "PARSEFABRIC_MIN_RECORDS_PER_SECOND must be finite and positive"
-        )
+        raise ValueError("PARSEFABRIC_MIN_RECORDS_PER_SECOND must be finite and positive")
     return minimum
 
 
@@ -148,9 +142,7 @@ def _validated_count(name: str, default: int) -> int:
 
 def _check_minimum_rate(rate: float, minimum: float | None) -> None:
     if minimum is not None and rate < minimum:
-        raise RuntimeError(
-            f"Celery throughput {rate:.2f} below {minimum:.2f} records/s"
-        )
+        raise RuntimeError(f"Celery throughput {rate:.2f} below {minimum:.2f} records/s")
 
 
 @celery_app.task(name=TASK_NAME)
@@ -176,9 +168,7 @@ def _wait_for_result(task_id: str, timeout: float) -> object:
 class CeleryExecutionBackend(ExecutionBackend):
     """Submit an allowlisted parsing callable to an externally managed worker."""
 
-    def __init__(
-        self, *, timeout: float = 30.0, sink: ObservabilitySink | None = None
-    ) -> None:
+    def __init__(self, *, timeout: float = 30.0, sink: ObservabilitySink | None = None) -> None:
         super().__init__(sink)
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be finite and positive")
@@ -214,14 +204,9 @@ class CeleryExecutionBackend(ExecutionBackend):
             raise RuntimeError("execution backend is shut down")
         is_application_log = function is parse_application_log
         is_mixed_content = function is parse_mixed_content
-        if (
-            not (is_application_log or is_mixed_content)
-            or kwargs
-            or len(args) not in (1, 2)
-        ):
+        if not (is_application_log or is_mixed_content) or kwargs or len(args) not in (1, 2):
             raise ValueError(
-                "Celery example supports only parse_application_log or "
-                "parse_mixed_content"
+                "Celery example supports only parse_application_log or parse_mixed_content"
             )
         parser_name, parser_version = (
             APPLICATION_LOG_PARSER if is_application_log else MIXED_CONTENT_PARSER
@@ -238,44 +223,32 @@ class CeleryExecutionBackend(ExecutionBackend):
             "context": asdict(context),
         }
         _validated_job(job)
-        self._sink.emit(LifecycleEvent("ExecutionSubmitted"))
+        await self.emit("ExecutionSubmitted")
         future = None
         try:
             future = await asyncio.to_thread(
                 parse_job.apply_async, kwargs={"job": job}, retry=False
             )
-            self._sink.emit(LifecycleEvent("ExecutionStarted"))
-            payload = await asyncio.to_thread(
-                _wait_for_result, future.id, self._timeout
-            )
+            await self.emit("ExecutionStarted")
+            payload = await asyncio.to_thread(_wait_for_result, future.id, self._timeout)
             if not isinstance(payload, str):
                 raise ValueError("worker returned a non-string parse result")
             result = loads_result(payload)
         except asyncio.CancelledError:
             if future is not None:
                 await asyncio.to_thread(future.revoke, terminate=False)
-            self._sink.emit(LifecycleEvent("ExecutionCancelled"))
+            await self.emit("ExecutionCancelled")
             raise
         except CeleryTimeoutError as error:
             if future is not None:
                 await asyncio.to_thread(future.revoke, terminate=False)
-            self._sink.emit(
-                LifecycleEvent(
-                    "ExecutionFailed", attributes={"error_type": "TimeoutError"}
-                )
-            )
-            raise TimeoutError(
-                "Celery parsing job timed out; running work may continue"
-            ) from error
+            await self.emit("ExecutionFailed", error_type="TimeoutError")
+            raise TimeoutError("Celery parsing job timed out; running work may continue") from error
         except Exception as error:
-            self._sink.emit(
-                LifecycleEvent(
-                    "ExecutionFailed", attributes={"error_type": type(error).__name__}
-                )
-            )
+            await self.emit("ExecutionFailed", error_type=type(error).__name__)
             raise
-        self._sink.emit(LifecycleEvent("ExecutionCompleted"))
-        return cast(T, result)
+        await self.emit("ExecutionCompleted")
+        return result
 
     async def shutdown(self) -> None:
         self._closed = True
@@ -290,12 +263,8 @@ async def main() -> None:
         await asyncio.sleep(1)
 
     parser = ApplicationLogParser()
-    expected = await parser.parse(
-        "database timeout", ParseContext(source_id="application.log")
-    )
-    minimum = _validated_minimum_rate(
-        os.environ.get("PARSEFABRIC_MIN_RECORDS_PER_SECOND")
-    )
+    expected = await parser.parse("database timeout", ParseContext(source_id="application.log"))
+    minimum = _validated_minimum_rate(os.environ.get("PARSEFABRIC_MIN_RECORDS_PER_SECOND"))
     records = _validated_count("PARSEFABRIC_CELERY_RECORDS", 100)
     samples = _validated_count("PARSEFABRIC_CELERY_SAMPLES", 3)
     mixed_context = ParseContext(
@@ -312,9 +281,7 @@ async def main() -> None:
             ParseContext(source_id="application.log"),
         )
         if actual != expected:
-            raise AssertionError(
-                "remote parser result differs from local parser result"
-            )
+            raise AssertionError("remote parser result differs from local parser result")
         actual_mixed: ParseResult = await backend.run(
             parse_mixed_content,
             MIXED_SOURCE,
@@ -323,21 +290,15 @@ async def main() -> None:
         if [event.evidence for event in actual_mixed.events] != [
             event.evidence for event in expected_mixed.events
         ]:
-            raise AssertionError(
-                "remote mixed-content evidence differs from local parsing"
-            )
+            raise AssertionError("remote mixed-content evidence differs from local parsing")
         if actual_mixed != expected_mixed:
-            raise AssertionError(
-                "remote mixed-content result differs from local parsing"
-            )
+            raise AssertionError("remote mixed-content result differs from local parsing")
         mixed_summary = _mixed_result_summary(actual_mixed)
         if (
             mixed_summary["event_count"] != sum(EXPECTED_MIXED_EVENT_TYPES.values())
             or mixed_summary["event_types"] != EXPECTED_MIXED_EVENT_TYPES
-            or mixed_summary["provenance"]["parser_names"]
-            != EXPECTED_MIXED_PARSER_PROVENANCE
-            or mixed_summary["provenance"]["pattern_names"]
-            != EXPECTED_MIXED_PATTERN_PROVENANCE
+            or mixed_summary["provenance"]["parser_names"] != EXPECTED_MIXED_PARSER_PROVENANCE
+            or mixed_summary["provenance"]["pattern_names"] != EXPECTED_MIXED_PATTERN_PROVENANCE
         ):
             raise AssertionError("mixed-content result counts or provenance differ")
         expected_record = await parser.parse("database timeout")
@@ -351,9 +312,7 @@ async def main() -> None:
                 max_in_flight=2,
             ):
                 if result != expected_record:
-                    raise AssertionError(
-                        "bounded remote map disagrees with local parsing"
-                    )
+                    raise AssertionError("bounded remote map disagrees with local parsing")
                 completed += 1
             elapsed = time.perf_counter() - start
             if completed != records:
@@ -426,12 +385,8 @@ async def main() -> None:
 def _mixed_result_summary(result: ParseResult) -> _MixedResultSummary:
     """Summarize event types and evidence provenance without exposing attributes."""
     event_types = Counter(event.event_type for event in result.events)
-    parser_names = Counter(
-        event.evidence.parser_name or "unknown" for event in result.events
-    )
-    pattern_names = Counter(
-        event.evidence.pattern_name or "unknown" for event in result.events
-    )
+    parser_names = Counter(event.evidence.parser_name or "unknown" for event in result.events)
+    pattern_names = Counter(event.evidence.pattern_name or "unknown" for event in result.events)
     return {
         "result_matches_local": True,
         "evidence_matches_local": True,

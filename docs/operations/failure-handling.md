@@ -13,11 +13,12 @@ result, depending on what you ask for.
 - Cancellation always propagates; it is never converted into a parse issue.
 - Some parsers record expected problems themselves. `JSONParser` and
   `CLIOutputParser` return an `unparsed` event plus a `ParseIssue` for input
-  they cannot decode, and `CLIOutputParser` warns when jc finds no records in
-  non-blank output. `TimestampedLogParser` raises `ParseError` naming the
-  first line that is not a valid record.
+  they cannot decode, and `CLIOutputParser` warns when its backend finds no
+  records in non-blank output. `TimestampedLogParser` raises `ParseError`
+  naming the first line that is not a valid record.
 - `MixedContentParser` falls back instead of failing: a fenced block that its
-  parser rejects is kept as `code` events, and lines that nothing claims
+  parser rejects is kept as `code` events with a result warning naming the
+  fence and the reason, and lines that nothing claims
   become `other` events.
 - ParseFabric never retries a parse. Parsers can have side effects and a
   stream may not be replayable, so retry policy belongs to your application.

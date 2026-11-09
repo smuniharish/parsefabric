@@ -1,17 +1,20 @@
-"""tree-sitter code detection, msgspec JSON, and jc command output."""
+"""tree-sitter code detection, strict JSON, and jc command output."""
 
 from __future__ import annotations
 
+import asyncio
 import pickle
 
 import pytest
 
 from parsefabric.builtins import (
+    DEFAULT_CODE_DETECTOR,
     DEFAULT_CODE_LANGUAGES,
     CLIOutputParser,
     CodeDetector,
     JSONParser,
     MixedContentParser,
+    TreeSitterCodeDetector,
 )
 from parsefabric.engine import ParseEngine
 from parsefabric.errors import ConfigurationError
@@ -44,30 +47,65 @@ CODE = [
 
 
 @pytest.mark.parametrize("text", PROSE)
-def test_prose_is_not_code(text: str) -> None:
-    assert CodeDetector().detect(text) is None
+async def test_prose_is_not_code(text: str) -> None:
+    assert await TreeSitterCodeDetector().detect(text) is None
 
 
 @pytest.mark.parametrize(("text", "language"), CODE)
-def test_code_language_is_detected(text: str, language: str) -> None:
-    assert CodeDetector().detect(text) == language
+async def test_code_language_is_detected(text: str, language: str) -> None:
+    assert await TreeSitterCodeDetector().detect(text) == language
 
 
-def test_detector_validates_languages_and_pickles() -> None:
+async def test_detector_validates_languages_and_pickles() -> None:
     with pytest.raises(ValueError, match="prose"):
-        CodeDetector(["bash"])
+        TreeSitterCodeDetector(["bash"])
     with pytest.raises(ValueError, match="unknown"):
-        CodeDetector(["no-such-language"])
+        TreeSitterCodeDetector(["no-such-language"])
     with pytest.raises(TypeError):
-        CodeDetector("python")
-    detector = pickle.loads(pickle.dumps(CodeDetector(["sql"])))
+        TreeSitterCodeDetector("python")
+    detector = pickle.loads(pickle.dumps(TreeSitterCodeDetector(["sql"])))
+    assert isinstance(detector, TreeSitterCodeDetector)
+    assert isinstance(detector, CodeDetector)
     assert detector.languages == ("sql",)
-    assert detector.detect("import os") is None
-    assert detector.detect("SELECT 1") == "sql"
+    assert await detector.detect("import os") is None
+    assert await detector.detect("SELECT 1") == "sql"
     assert "python" in DEFAULT_CODE_LANGUAGES
+    assert DEFAULT_CODE_DETECTOR.languages == DEFAULT_CODE_LANGUAGES
 
 
-def test_detector_cache_is_bounded_least_recently_used_and_thread_safe(
+async def test_detector_prepares_grammars_once_in_a_worker_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from parsefabric.builtins import code_detection
+
+    prefetched: list[list[str]] = []
+    monkeypatch.setattr(code_detection.language_pack, "prefetch", prefetched.append)
+    detector = TreeSitterCodeDetector(["python"])
+    assert await detector.detect("   ") is None
+    assert prefetched == []
+    assert await detector.detect("import os") == "python"
+    await detector.prepare()
+    assert prefetched == [["python"]]
+    await TreeSitterCodeDetector([]).prepare()
+    assert prefetched == [["python"]]
+
+
+async def test_custom_detectors_plug_into_mixed_content() -> None:
+    class KeywordDetector(CodeDetector):
+        async def detect(self, text: str) -> str | None:
+            return "pseudo" if text.startswith("BEGIN") else None
+
+    detector = KeywordDetector()
+    await detector.prepare()
+    result = await MixedContentParser(code_detector=detector).parse("plain words\nBEGIN work\n")
+    code = [event for event in result.events if event.event_type == "code"]
+    assert [event.attributes["language"] for event in code] == ["pseudo"]
+    with pytest.raises(TypeError, match="CodeDetector"):
+        # pyrefly: ignore[no-matching-overload]
+        MixedContentParser(code_detector="python")
+
+
+async def test_detector_cache_is_bounded_least_recently_used_and_thread_safe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from concurrent.futures import ThreadPoolExecutor
@@ -75,7 +113,7 @@ def test_detector_cache_is_bounded_least_recently_used_and_thread_safe(
     from parsefabric.builtins import code_detection
 
     monkeypatch.setattr(code_detection, "_CACHE_SIZE", 2)
-    detector = CodeDetector(["python"])
+    detector = TreeSitterCodeDetector(["python"])
     calls: list[str] = []
     detect = detector._detect
 
@@ -84,27 +122,31 @@ def test_detector_cache_is_bounded_least_recently_used_and_thread_safe(
         return detect(text)
 
     monkeypatch.setattr(detector, "_detect", counting)
-    assert detector.detect("import os") == "python"
-    assert detector.detect("x = f()") == "python"
-    assert detector.detect("import os") == "python"
-    assert detector.detect("plain words") is None
-    assert detector.detect("import os") == "python"
-    assert detector.detect("x = f()") == "python"
+    assert await detector.detect("import os") == "python"
+    assert await detector.detect("x = f()") == "python"
+    assert await detector.detect("import os") == "python"
+    assert await detector.detect("plain words") is None
+    assert await detector.detect("import os") == "python"
+    assert await detector.detect("x = f()") == "python"
     assert calls == ["import os", "x = f()", "plain words", "x = f()"]
     long_text = "import os\n" * 200
-    assert detector.detect(long_text) == "python"
-    assert detector.detect(long_text) == "python"
+    assert await detector.detect(long_text) == "python"
+    assert await detector.detect(long_text) == "python"
     assert calls.count(long_text) == 2
+
+    def detect_in_thread(text: str) -> str | None:
+        return asyncio.run(detector.detect(text))
+
     with ThreadPoolExecutor(max_workers=8) as pool:
         texts = [f"value_{index} = f()" for index in range(64)]
-        assert set(pool.map(detector.detect, texts * 4)) == {"python"}
+        assert set(pool.map(detect_in_thread, texts * 4)) == {"python"}
     assert len(detector._cache) <= 2
 
 
-def test_detector_handles_deeply_nested_code_without_recursion_errors() -> None:
-    detector = CodeDetector(["python", "sql"])
-    assert detector.detect("x = " + "(" * 3000 + "f()" + ")" * 3000) == "python"
-    assert detector.detect("SELECT " + "(" * 3000 + "1" + ")" * 3000 + ";") in {
+async def test_detector_handles_deeply_nested_code_without_recursion_errors() -> None:
+    detector = TreeSitterCodeDetector(["python", "sql"])
+    assert await detector.detect("x = " + "(" * 3000 + "f()" + ")" * 3000) == "python"
+    assert await detector.detect("SELECT " + "(" * 3000 + "1" + ")" * 3000 + ";") in {
         "sql",
         None,
     }
@@ -127,9 +169,7 @@ async def test_mixed_content_detects_code_blocks_by_language() -> None:
     )
     parser = MixedContentParser()
     result = await parser.parse(source)
-    assert [
-        (event.event_type, event.attributes.get("language")) for event in result.events
-    ] == [
+    assert [(event.event_type, event.attributes.get("language")) for event in result.events] == [
         ("other", None),
         ("code", "python"),
         ("code", "python"),
@@ -147,23 +187,22 @@ async def test_mixed_content_detects_code_blocks_by_language() -> None:
     engine = ParseEngine()
     aggregates = await engine.aggregate(parser, result.events)
     assert await engine.materialize(parser, source, aggregates) == result.events
-    disabled = await MixedContentParser(code_languages=()).parse(source)
+    disabled = await MixedContentParser(code_detector=None).parse(source)
     assert {event.event_type for event in disabled.events[:8]} == {"other"}
     with pytest.raises(ValueError, match="reserved"):
         MixedContentParser([RegexPattern("code", r"x")])
 
 
-async def test_json_parser_keeps_big_integers_and_rejects_non_standard_numbers() -> (
-    None
-):
+async def test_json_parser_keeps_big_integers_and_rejects_non_standard_numbers() -> None:
     big = 2**100
     (event,) = (await JSONParser().parse(f'{{"id": {big}}}')).events
     assert event.attributes["value"] == {"id": big}
-    assert type(event.attributes["value"]["id"]) is int  # type: ignore[index]
+    # pyrefly: ignore[bad-index, unsupported-operation]
+    assert type(event.attributes["value"]["id"]) is int
     for text in ('{"a": NaN}', "1e400", "[Infinity]"):
         result = await JSONParser().parse(text)
         assert result.events[0].event_type == "unparsed"
-        assert result.errors[0].error_type in {"DecodeError", "ValidationError"}
+        assert result.errors[0].error_type == "ParseError"
 
 
 async def test_cli_output_parser_uses_jc_command_parsers() -> None:
@@ -186,7 +225,7 @@ async def test_cli_output_parser_uses_jc_command_parsers() -> None:
     assert await engine.materialize(parser, source, aggregates) == result.events
     (kv,) = (await CLIOutputParser(command="kv").parse("name=shop\nport=8080")).events
     assert kv.attributes == {"name": "shop", "port": "8080"}
-    failed = await CLIOutputParser(command="ping").parse("garbage")
+    failed = await CLIOutputParser(command="uptime").parse("garbage")
     assert failed.events[0].event_type == "unparsed"
     assert failed.errors
     empty = await CLIOutputParser(command="df").parse("garbage")

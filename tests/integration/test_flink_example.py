@@ -93,7 +93,8 @@ def test_mixed_job_contract_rejects_custom_parsers_and_unsafe_json() -> None:
 )
 def test_client_rejects_unbounded_or_invalid_records(records: list[object]) -> None:
     with pytest.raises(ValueError):
-        encode_jobs(records)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        encode_jobs(records)
 
 
 @pytest.mark.parametrize(
@@ -134,10 +135,7 @@ def test_worker_rejects_malformed_or_nonfinite_json(payload: str) -> None:
 async def test_reader_orders_parts_and_rejects_duplicates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rows = [
-        parse_record(item)
-        for item in encode_jobs([_record(), ("quiet", ParseContext())])
-    ]
+    rows = [parse_record(item) for item in encode_jobs([_record(), ("quiet", ParseContext())])]
     part_a, part_b = Path("part-a"), Path("part-b")
     blobs = {
         part_a: (rows[1] + "\n").encode(),
@@ -201,9 +199,7 @@ async def test_verification_fails_on_wrong_count_or_evidence(
 
     wrong_context = ParseContext(source_id="wrong.log")
     wrong = await mixed_parser().parse(records[0][0], wrong_context)
-    monkeypatch.setattr(
-        flink_job, "read_results", lambda path, count: [wrong, expected[1]]
-    )
+    monkeypatch.setattr(flink_job, "read_results", lambda path, count: [wrong, expected[1]])
     with pytest.raises(AssertionError, match="result/evidence differs"):
         flink_job.verify_results(Path("output"), records)
 
@@ -280,7 +276,8 @@ def test_reader_rejects_noninteger_counts(tmp_path: Path, count: object) -> None
     row = parse_record(encode_jobs([_record()])[0])
     (tmp_path / "part-0").write_text(row + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="invalid result count"):
-        read_results(tmp_path, count)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        read_results(tmp_path, count)
 
 
 def test_reader_bounds_each_read_before_decoding(
@@ -301,9 +298,7 @@ def test_reader_bounds_each_read_before_decoding(
     monkeypatch.setattr(
         Path,
         "open",
-        lambda self, mode: RecordingStream(
-            b"x" * (flink_backend.MAX_OUTPUT_ROW_BYTES + 128)
-        ),
+        lambda self, mode: RecordingStream(b"x" * (flink_backend.MAX_OUTPUT_ROW_BYTES + 128)),
     )
     with pytest.raises(ValueError, match="exceeds bounded result size"):
         read_results(Path("output"), 1)

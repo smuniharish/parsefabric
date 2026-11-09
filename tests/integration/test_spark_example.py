@@ -23,7 +23,7 @@ class FakeRDD:
         self.items = items
 
     def mapPartitions(self, function: object) -> "FakeRDD":  # noqa: N802 - PySpark API name
-        self.items = list(function(iter(self.items)))  # type: ignore[operator]
+        self.items = list(function(iter(self.items)))  # pyrefly: ignore[not-callable]
         return self
 
     def collect(self) -> list[tuple[int, str]]:
@@ -61,10 +61,7 @@ async def test_worker_json_round_trip_preserves_evidence() -> None:
 
 async def test_batch_preserves_input_order_and_exact_local_parity() -> None:
     spark = FakeSpark()
-    jobs = [
-        make_job(f"database timeout {i}", ParseContext(source_id=f"{i}.log"))
-        for i in range(4)
-    ]
+    jobs = [make_job(f"database timeout {i}", ParseContext(source_id=f"{i}.log")) for i in range(4)]
     result = SparkBatchParser(spark).parse(iter(jobs), partitions=2)
     assert result == [
         await ApplicationLogParser().parse(
@@ -121,7 +118,8 @@ def test_worker_rejects_invalid_json_and_unknown_fields() -> None:
     with pytest.raises(ValueError, match="invalid Spark job JSON"):
         parse_job("{")
     with pytest.raises(ValueError, match="JSON text"):
-        parse_job(None)  # type: ignore[arg-type]
+        # pyrefly: ignore[bad-argument-type]
+        parse_job(None)
     job = make_job("text")
     job["callable"] = "builtins.eval"
     with pytest.raises(ValueError, match="exactly"):
@@ -154,7 +152,7 @@ def test_driver_requires_spark_4_and_complete_unique_results() -> None:
         def collect(self) -> list[tuple[int, str]]:
             return [(0, self.items[0][1]), (0, self.items[0][1])]
 
-    spark.sparkContext.parallelize = lambda items, partitions: IncompleteRDD(items)  # type: ignore[method-assign]
+    spark.sparkContext.parallelize = lambda items, partitions: IncompleteRDD(items)
     with pytest.raises(ValueError, match="missing or duplicate"):
         parser.parse([make_job("a"), make_job("b")])
 
@@ -244,9 +242,7 @@ async def test_batch_runs_mixed_content_jobs_alongside_application_log_jobs() ->
     ]
     actual = SparkBatchParser(spark).parse(jobs, partitions=2)
     assert actual == [
-        await ApplicationLogParser().parse(
-            "database timeout", ParseContext(source_id="0.log")
-        ),
+        await ApplicationLogParser().parse("database timeout", ParseContext(source_id="0.log")),
         await mixed_parser().parse(MIXED_SOURCE, ParseContext(source_id="1.log")),
     ]
 
@@ -258,9 +254,7 @@ def test_make_job_rejects_parser_outside_the_allowlist() -> None:
         make_job("text", parser_name="mixed-content", parser_version="2")
 
 
-async def test_summarize_result_reports_counts_types_and_provenance_without_raw_source() -> (  # noqa: E501
-    None
-):
+async def test_summarize_result_reports_counts_types_and_provenance_without_raw_source() -> None:
     context = ParseContext(source_id="mixed.log", correlation_id="c-mixed")
     result = await mixed_parser().parse(MIXED_SOURCE, context)
     summary = summarize_result(result)
@@ -280,9 +274,7 @@ async def test_summarize_result_reports_counts_types_and_provenance_without_raw_
 @pytest.mark.parametrize("field", ["schema_version", "source", "context"])
 def test_worker_rejects_duplicate_json_fields(field: str) -> None:
     payload = json.dumps(make_job("database timeout"))
-    payload = (
-        payload[:-1] + f', "{field}": ' + json.dumps(make_job("quiet")[field]) + "}"
-    )
+    payload = payload[:-1] + f', "{field}": ' + json.dumps(make_job("quiet")[field]) + "}"
     with pytest.raises(ValueError, match="duplicate JSON field"):
         parse_job(payload)
 
@@ -301,8 +293,9 @@ def test_driver_rejects_noninteger_result_indices(index: object) -> None:
 
     class InvalidIndexRDD(FakeRDD):
         def collect(self) -> list[tuple[int, str]]:
-            return [(index, self.items[0][1])]  # type: ignore[list-item]
+            # pyrefly: ignore[bad-return]
+            return [(index, self.items[0][1])]
 
-    spark.sparkContext.parallelize = lambda items, partitions: InvalidIndexRDD(items)  # type: ignore[method-assign]
+    spark.sparkContext.parallelize = lambda items, partitions: InvalidIndexRDD(items)
     with pytest.raises(ValueError, match=r"invalid.*result"):
         SparkBatchParser(spark).parse([make_job("database timeout")])

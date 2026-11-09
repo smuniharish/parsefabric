@@ -83,13 +83,9 @@ class SQLStatementParser(Parser):
 
     @property
     def capabilities(self) -> ParserCapabilities:
-        return ParserCapabilities(
-            deterministic=True, parallel_safe=True, aggregatable=True
-        )
+        return ParserCapabilities(deterministic=True, parallel_safe=True, aggregatable=True)
 
-    async def parse(
-        self, source: object, context: ParseContext | None = None
-    ) -> ParseResult:
+    async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
         if isinstance(source, bytes):
             text = source.decode("utf-8", errors="strict")
         elif isinstance(source, str):
@@ -114,9 +110,7 @@ class SQLStatementParser(Parser):
                 described = describe_statement(statement)
             except SQLGlotParseError as error:
                 line = text.count("\n", 0, first_token_start) + 1
-                raise ParseError(
-                    f"invalid PostgreSQL statement at line {line}"
-                ) from error
+                raise ParseError(f"invalid PostgreSQL statement at line {line}") from error
             line_number = text.count("\n", 0, first_token_start) + 1
             event = ParsedEvent(
                 "sql_statement",
@@ -133,9 +127,7 @@ class SQLStatementParser(Parser):
                     event,
                     context,
                     start_offset=(offset or 0) + byte_start,
-                    end_offset=(offset or 0)
-                    + byte_start
-                    + len(statement.encode("utf-8")),
+                    end_offset=(offset or 0) + byte_start + len(statement.encode("utf-8")),
                     line_number=line_number,
                 )
             )
@@ -161,9 +153,7 @@ class SQLStatementParser(Parser):
 
 
 async def main() -> None:
-    source = await asyncio.to_thread(
-        (DATA / "shop-operations.sql").read_text, encoding="utf-8"
-    )
+    source = await asyncio.to_thread((DATA / "shop-operations.sql").read_text, encoding="utf-8")
     engine = ParseEngine()
     context = ParseContext(source_id="shop-operations.sql")
     parser = SQLStatementParser()
@@ -174,8 +164,7 @@ async def main() -> None:
     for group in document.groups:
         for entry in group.evidence:
             print(" ", entry.occurrences, "x", list(entry.positions), entry.message)
-    # The parser owns the wire format; measure the compact document it stores.
-    metrics = measure_compression(source, parser.serialize((document,)))
+    metrics = await measure_compression(source, await engine.serialize((document,)))
     print(
         "bytes:",
         metrics.input_bytes,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 from dataclasses import dataclass, field
@@ -23,12 +24,12 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 from opentelemetry.trace import StatusCode
 
 from parsefabric._summary_review import Fact, check_claims
-from parsefabric.compression import estimate_tokens, measure_compression
+from parsefabric.compression import measure_compression
 from parsefabric.errors import ConfigurationError, RegistryError
 from parsefabric.observability import LifecycleEvent, OpenTelemetryObservabilitySink
 from parsefabric.parser import DeterministicParser
 from parsefabric.patterns import RegexPattern
-from parsefabric.registry import ParserRegistry
+from parsefabric.registry import InMemoryParserRegistry
 from tests.support.strategies import UNICODE
 
 PATTERN_NAMES = st.sampled_from(["a", "b", "c", "d", "e"])
@@ -79,36 +80,37 @@ class ParserRegistryMachine(RuleBasedStateMachine):
 
     def __init__(self) -> None:
         super().__init__()
-        self.registry = ParserRegistry()
+        self.registry = InMemoryParserRegistry()
         self.model: dict[str, DeterministicParser] = {}
+        self.runner = asyncio.Runner()
+
+    def teardown(self) -> None:
+        self.runner.close()
 
     @rule(target=registered, name=PATTERN_NAMES)
     def register(self, name: str) -> str:
         parser = DeterministicParser([], name=name)
-        if name in self.model:
-            self.registry.register(parser, replace=True)
-        else:
-            self.registry.register(parser)
+        self.runner.run(self.registry.register(parser, replace=name in self.model))
         self.model[name] = parser
         return name
 
     @rule(name=consumes(registered))
     def unregister(self, name: str) -> None:
         if name in self.model:
-            assert self.registry.unregister(name) is self.model.pop(name)
+            assert self.runner.run(self.registry.unregister(name)) is self.model.pop(name)
         else:
             try:
-                self.registry.unregister(name)
+                self.runner.run(self.registry.unregister(name))
             except RegistryError:
                 return
             raise AssertionError("missing parser unregistered")
 
     @invariant()
     def names_and_lookups_match(self) -> None:
-        assert self.registry.names() == tuple(sorted(self.model))
+        assert self.runner.run(self.registry.names()) == tuple(sorted(self.model))
         for name, parser in self.model.items():
-            assert self.registry.get(name) is parser
-            assert self.registry.metadata(name).name == name
+            assert self.runner.run(self.registry.get(name)) is parser
+            assert self.runner.run(self.registry.metadata(name)).name == name
 
 
 TestPatternRegistry = PatternRegistryMachine.TestCase
@@ -144,11 +146,13 @@ _EVENTS = {
 }
 
 
-def _emit(sink: OpenTelemetryObservabilitySink, operation: _Operation) -> int:
+async def _emit(sink: OpenTelemetryObservabilitySink, operation: _Operation) -> int:
     start, completed, failed = _EVENTS[operation.kind]
-    sink.emit(LifecycleEvent(start))
-    total = 1 + sum(_emit(sink, child) for child in operation.children)
-    sink.emit(
+    await sink.emit(LifecycleEvent(start))
+    total = 1
+    for child in operation.children:
+        total += await _emit(sink, child)
+    await sink.emit(
         LifecycleEvent(
             failed if operation.failed else completed,
             attributes={"error_type": "Boom"} if operation.failed else {},
@@ -165,7 +169,11 @@ def test_spans_open_and_close_in_matching_nested_pairs(
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     sink = OpenTelemetryObservabilitySink(provider.get_tracer("test"))
-    total = sum(_emit(sink, operation) for operation in operations)
+
+    async def emit_all() -> int:
+        return sum([await _emit(sink, operation) for operation in operations])
+
+    total = asyncio.run(emit_all())
     spans = exporter.get_finished_spans()
     assert len(spans) == total
     by_id = {}
@@ -187,7 +195,7 @@ def test_spans_open_and_close_in_matching_nested_pairs(
 @given(st.text(UNICODE, max_size=200) | st.binary(max_size=200))
 def test_compression_metrics_are_consistent(source: str | bytes) -> None:
     output = source[: len(source) // 2]
-    metrics = measure_compression(source, output)
+    metrics = asyncio.run(measure_compression(source, output))
     size = len(source if isinstance(source, bytes) else source.encode("utf-8"))
     assert metrics.input_bytes == size
     assert metrics.bytes_saved == metrics.input_bytes - metrics.output_bytes
@@ -197,8 +205,6 @@ def test_compression_metrics_are_consistent(source: str | bytes) -> None:
         assert metrics.reduction_percent == 100 * metrics.bytes_saved / size
     else:
         assert metrics.reduction_percent is None
-    if isinstance(source, str):
-        assert metrics.input_tokens == estimate_tokens(source)
 
 
 _FACTS = (
@@ -222,9 +228,7 @@ def test_claim_checks_never_fail_on_arbitrary_text(text: str) -> None:
                 "evidence_ids": st.lists(
                     st.sampled_from(["e0", "e1", "e2", "e9"]), min_size=1, max_size=3
                 ),
-                "context_ids": st.lists(
-                    st.sampled_from(["e0", "e1", "e2"]), max_size=2
-                ),
+                "context_ids": st.lists(st.sampled_from(["e0", "e1", "e2"]), max_size=2),
                 "occurrences": st.integers(min_value=1, max_value=5),
             }
         ),
@@ -239,7 +243,8 @@ def test_claim_checks_accept_only_grounded_complete_claims(
     cited = [
         identifier
         for claim in claims
-        for identifier in claim["evidence_ids"]  # type: ignore[union-attr]
+        # pyrefly: ignore[not-iterable]
+        for identifier in claim["evidence_ids"]
     ]
     if not issues:
         assert {"e0", "e1"} <= set(cited)

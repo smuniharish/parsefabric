@@ -11,9 +11,8 @@ import platform
 import statistics
 import sys
 import time
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
-from benchmarks._support import run_sync
 from parsefabric.builtins import ApplicationLogParser
 from parsefabric.execution import (
     AsyncExecutionBackend,
@@ -24,16 +23,17 @@ from parsefabric.execution import (
 from parsefabric.models import ParseContext, ParseResult
 from parsefabric.partitioning import LinePartitioner, Partition
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
-def parse_partition(partition: Partition) -> ParseResult:
-    return run_sync(
-        ApplicationLogParser().parse(
-            partition.content,
-            ParseContext(
-                partition_id=partition.partition_id,
-                source_offset=partition.start_offset,
-            ),
-        )
+
+async def parse_partition(partition: Partition) -> ParseResult:
+    return await ApplicationLogParser().parse(
+        partition.content,
+        ParseContext(
+            partition_id=partition.partition_id,
+            source_offset=partition.start_offset,
+        ),
     )
 
 
@@ -147,9 +147,7 @@ def positive_rate(value: str) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--backend", choices=("async", "thread", "process"), required=True
-    )
+    parser.add_argument("--backend", choices=("async", "thread", "process"), required=True)
     parser.add_argument("--records", type=positive_int, default=100_000)
     parser.add_argument("--partition-lines", type=positive_int, default=1_000)
     parser.add_argument("--workers", type=positive_int, default=2)

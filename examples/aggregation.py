@@ -20,8 +20,7 @@ def bursty_log(minutes: int) -> str:
         stamp = f"2026-10-01T08:{minute:02d}"
         lines.append(f"{stamp}:00+00:00 INFO reconciliation batch started")
         lines.extend(
-            f"{stamp}:{second:02d}+00:00 ERROR shop database timeout"
-            for second in range(1, 41)
+            f"{stamp}:{second:02d}+00:00 ERROR shop database timeout" for second in range(1, 41)
         )
         lines.append(f"{stamp}:41+00:00 WARN retry scheduled with a fresh connection")
     return "\n".join(lines) + "\n"
@@ -45,8 +44,8 @@ async def main() -> None:
                     f"lines {list(entry.positions)} {entry.message}"
                 )
 
-    stored = parser.serialize(aggregates)
-    restored = parser.deserialize(stored)
+    stored = await engine.serialize(aggregates)
+    restored = await engine.deserialize(stored)
     events = await engine.materialize(parser, source, restored, context)
     print("round trip exact:", restored == aggregates and events == result.events)
 
@@ -55,8 +54,8 @@ async def main() -> None:
 
     incident = bursty_log(minutes=20)
     burst = await engine.parse(parser, incident, ParseContext(source_id="incident"))
-    compact = parser.serialize(await engine.aggregate(parser, burst.events))
-    metrics = measure_compression(incident, compact)
+    compact = await engine.serialize(await engine.aggregate(parser, burst.events))
+    metrics = await measure_compression(incident, compact)
     print(
         f"{len(burst.events)} bursty lines: stored {metrics.output_bytes} of "
         f"{metrics.input_bytes} bytes ({metrics.reduction_percent:.0f}% smaller, "

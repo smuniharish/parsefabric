@@ -8,8 +8,7 @@ aggregate 'log': 11 events
   DEBUG x1 lines [7] retry found 22 pending orders
   WARN  x1 lines [3] upstream inventory snapshot is two minutes old
   WARN  x1 lines [10] two orders remain pending
-  ERROR x2 lines [4, 5] shop database timeout
-  ERROR x1 lines [9] shop database timeout
+  ERROR x3 lines [4, 5, 9] shop database timeout
 round trip exact: True
 lossy counts: {'DEBUG': 2, 'ERROR': 3, 'INFO': 4, 'WARN': 2}
-840 bursty lines: stored 8252 of 45820 bytes (82% smaller, ~9392 tokens saved)
+840 bursty lines: stored 3999 of 45820 bytes (91% smaller, ~10455 tokens saved)

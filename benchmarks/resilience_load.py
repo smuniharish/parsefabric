@@ -11,8 +11,7 @@ import platform
 import statistics
 import time
 import tracemalloc
-from collections.abc import Iterator
-from typing import Literal, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 from parsefabric import ParseContext
 from parsefabric.aggregation.evidence import canonical_event
@@ -24,6 +23,9 @@ from parsefabric.execution import (
 )
 from parsefabric.parser import DeterministicParser
 from parsefabric.patterns import RegexPattern
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 type BackendName = Literal["async", "thread", "process"]
 
@@ -71,16 +73,13 @@ async def parse_and_verify(job: Job) -> JobResult:
     for number, (event, raw) in enumerate(
         zip(result.events, source.splitlines(keepends=True), strict=True), start=1
     ):
-        if (
-            event.evidence.line_number != number
-            or event.evidence.start_offset != offset
-        ):
+        if event.evidence.line_number != number or event.evidence.start_offset != offset:
             raise AssertionError("load provenance does not match the input")
         offset += len(raw.encode("utf-8"))
         if event.evidence.end_offset != offset:
             raise AssertionError("load byte span does not match the input")
     aggregates = await engine.aggregate(parser, result.events)
-    decoded = parser.deserialize(parser.serialize(aggregates))
+    decoded = await engine.deserialize(await engine.serialize(aggregates))
     restored = await engine.materialize(parser, source, decoded, context)
     before = "\n".join(canonical_event(event) for event in result.events)
     after = "\n".join(canonical_event(event) for event in restored)
@@ -147,9 +146,7 @@ async def measure(
         raise AssertionError("load execution lost or duplicated documents")
     latencies = [row["seconds"] for row in results]
     digest = hashlib.sha256(
-        "".join(
-            row["digest"] for row in sorted(results, key=lambda row: row["index"])
-        ).encode()
+        "".join(row["digest"] for row in sorted(results, key=lambda row: row["index"])).encode()
     ).hexdigest()
     return Sample(
         backend=backend_name,
@@ -174,13 +171,8 @@ async def run(
     maximum_peak_mib: float = 128,
     deadline: float = 300,
 ) -> dict[str, object]:
-    if any(
-        type(value) is not int or value < 1
-        for value in (documents, records, workers, samples)
-    ):
-        raise ValueError(
-            "documents, records, workers, and samples must be positive integers"
-        )
+    if any(type(value) is not int or value < 1 for value in (documents, records, workers, samples)):
+        raise ValueError("documents, records, workers, and samples must be positive integers")
     if any(
         not math.isfinite(value) or value <= 0
         for value in (minimum_rate, maximum_peak_mib, deadline)
@@ -191,16 +183,12 @@ async def run(
         for backend in ("async", "thread", "process"):
             measurements.extend(
                 [
-                    await measure(
-                        backend, documents=documents, records=records, workers=workers
-                    )
+                    await measure(backend, documents=documents, records=records, workers=workers)
                     for _ in range(samples)
                 ]
             )
     if len({row["digest"] for row in measurements}) != 1:
-        raise AssertionError(
-            "complete event fingerprints differ across backends or runs"
-        )
+        raise AssertionError("complete event fingerprints differ across backends or runs")
     passed = all(
         row["records_per_second"] >= minimum_rate
         and row["caller_peak_traced_bytes"] <= maximum_peak_mib * 1024**2

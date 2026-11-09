@@ -10,7 +10,7 @@ from parsefabric.capabilities import ParserCapabilities
 from parsefabric.errors import ParseError
 from parsefabric.models import ParseContext, ParsedEvent, ParseResult
 from parsefabric.parser import Parser
-from parsefabric.parser._text import iter_text_lines
+from parsefabric.parser._text import iter_text_lines, source_text
 
 
 class TimestampedLogParser(Parser):
@@ -46,18 +46,12 @@ class TimestampedLogParser(Parser):
     ) -> None:
         if line_pattern is not None and not isinstance(line_pattern, (str, re.Pattern)):
             raise TypeError("line_pattern must be a string or compiled text regex")
-        if isinstance(line_pattern, re.Pattern) and not isinstance(
-            line_pattern.pattern, str
-        ):
+        if isinstance(line_pattern, re.Pattern) and not isinstance(line_pattern.pattern, str):
             raise TypeError("line_pattern must be a text regex")
         self._line_pattern = (
             self.DEFAULT_LINE_PATTERN
             if line_pattern is None
-            else (
-                re.compile(line_pattern)
-                if isinstance(line_pattern, str)
-                else line_pattern
-            )
+            else (re.compile(line_pattern) if isinstance(line_pattern, str) else line_pattern)
         )
         if not {"at", "level", "message"} <= self._line_pattern.groupindex.keys():
             raise ValueError("line_pattern requires at, level, and message groups")
@@ -75,20 +69,11 @@ class TimestampedLogParser(Parser):
     @property
     @override
     def capabilities(self) -> ParserCapabilities:
-        return ParserCapabilities(
-            deterministic=True, parallel_safe=True, aggregatable=True
-        )
+        return ParserCapabilities(deterministic=True, parallel_safe=True, aggregatable=True)
 
     @override
-    async def parse(
-        self, source: object, context: ParseContext | None = None
-    ) -> ParseResult:
-        if isinstance(source, bytes):
-            text = source.decode("utf-8", errors="strict")
-        elif isinstance(source, str):
-            text = source
-        else:
-            raise TypeError("timestamped log parser accepts only str or bytes")
+    async def parse(self, source: object, context: ParseContext | None = None) -> ParseResult:
+        text = source_text(source, "timestamped log parser")
         offset = context.source_offset if context and context.source_offset else 0
         events: list[ParsedEvent] = []
         for line_number, (line, width) in enumerate(iter_text_lines(text), 1):
@@ -100,13 +85,9 @@ class TimestampedLogParser(Parser):
             try:
                 timestamp = datetime.fromisoformat(match["at"])
             except ValueError as error:
-                raise ParseError(
-                    f"invalid log timestamp at line {line_number}"
-                ) from error
+                raise ParseError(f"invalid log timestamp at line {line_number}") from error
             if timestamp.utcoffset() is None:
-                raise ParseError(
-                    f"log timestamp must have a timezone at line {line_number}"
-                )
+                raise ParseError(f"log timestamp must have a timezone at line {line_number}")
             event = ParsedEvent(
                 event_type="log",
                 timestamp=timestamp,
