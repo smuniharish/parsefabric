@@ -48,9 +48,9 @@ result, depending on what you ask for.
 
 ## Evidence summaries
 
-- Drafts and critiques must match strict schemas. Output that does not parse
-  counts as a failed review, never as approval, and uses the same revision
-  budget as a rejected claim.
+- Drafts and critiques must match strict schemas. Malformed output is never
+  accepted as approval; malformed critiques are retried separately from the
+  revision budget and can raise `SummaryValidationError`.
 - A batch that still fails after `max_revisions` repairs raises
   `SummaryValidationError`.
 - Summarizing an empty set of aggregates raises `ValueError`.

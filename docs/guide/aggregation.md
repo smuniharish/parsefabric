@@ -6,7 +6,7 @@ without losing any of them, so you can store, transmit or summarize far less
 data and still rebuild every original event exactly.
 
 <figure class="diagram" markdown="span">
-  ![Events of one source become one EvidenceAggregate per event type and parser, grouped by pattern and severity into one entry per distinct message, with a SHA-256 checksum over every canonical event; deterministic, stateless parsers store only line positions while other parsers store their events; materialize rebuilds the aggregates and compares them.](../assets/diagrams/aggregation.png){ width="776" }
+  ![Parsed events become lossless aggregates that can be stored and materialized into verified events, with source and parser context when required.](../assets/diagrams/aggregation.png){ width="776" }
   <figcaption>How events become lossless, checksummed aggregates.</figcaption>
 </figure>
 

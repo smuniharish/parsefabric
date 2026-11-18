@@ -7,10 +7,8 @@ leave the model nothing to re-count or re-locate; the aggregates remain the
 lossless source of truth, and a summary is a derived, non-deterministic view
 of them.
 
-Each batch of facts goes through structured drafting, deterministic checks of
-citations and counts, and model critique; failed claims are revised within a
-fixed limit. The final text is rendered from checked claims, without a
-free-form synthesis call that could introduce new facts.
+Reports are checked against the supplied evidence; unsuccessful review raises
+an error instead of returning unchecked claims.
 """
 
 from __future__ import annotations
@@ -238,14 +236,10 @@ class EvidenceSummarizer:
     """Summarize evidence aggregates with a language model, checking every claim.
 
     The model never sees the raw input, only facts derived from aggregates.
-    Aggregates are split into batches that are reviewed concurrently: the
-    model drafts structured claims that cite fact identifiers, deterministic
-    checks verify the citations and counts, the model critiques the rendered
-    candidate, and failed claims are revised up to ``max_revisions`` times.
-    Malformed critic output is requested again, up to three attempts, without
-    consuming a revision. The final report is rendered from checked claims,
-    with exact counts and line positions, without another model call. Model
-    critique is not independent factual verification.
+    Aggregates are reviewed in batches using the configured model. Citations
+    and quantities are checked against the evidence, and review failures
+    raise ``SummaryValidationError``. The report includes evidence counts and
+    line positions. Model critique is not independent factual verification.
 
     Args:
         model: Any `LanguageModel`.

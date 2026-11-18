@@ -136,6 +136,27 @@ Maintainers release from `main`:
 2. Move the **Unreleased** changelog entries under the new version and date.
 3. Set `metadata.version` in both `parsefabric-skills/skills/*/SKILL.md` to
    the same version.
-4. Publish a GitHub release tagged `vX.Y.Z`. The release workflow checks that
-   the tag matches the package version, builds and checks the distributions,
-   and publishes them to PyPI with trusted publishing.
+4. Build the wheel and source distribution, and validate their metadata:
+
+   ```bash
+   uv build --no-sources
+   uvx twine check --strict dist/*
+   ```
+
+   To inspect metadata, replace `X.Y.Z` below with the release version:
+
+   ```bash
+   python -m zipfile -e dist/parsefabric-X.Y.Z-py3-none-any.whl release-wheel
+   python -m tarfile -e dist/parsefabric-X.Y.Z.tar.gz release-source
+   ```
+
+   Read `release-wheel/parsefabric-X.Y.Z.dist-info/METADATA` and
+   `release-source/parsefabric-X.Y.Z/PKG-INFO`, confirm the intended version
+   and files, and remove these temporary extraction directories afterwards.
+5. After reviewing the artifacts, publish them manually with `uv publish`.
+   Configure a PyPI API token securely as described in the
+   [uv publishing guide](https://docs.astral.sh/uv/guides/package/#publishing-your-package);
+   never put tokens in the repository or a command recorded in shell history.
+6. Create the `vX.Y.Z` Git tag and GitHub release manually after the maintainer
+   approves the release. GitHub Actions does not publish releases or upload
+   packages.

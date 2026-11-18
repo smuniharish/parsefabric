@@ -9,8 +9,8 @@ blocks by language, detects unfenced code, and keeps everything else as text.
 ## How lines are classified
 
 <figure class="diagram" markdown="span">
-  ![For each line: a code fence sends its body to the parser for the fence language, falling back to code events; otherwise a matching route whose parser returns events wins; otherwise a matching line pattern produces an event; otherwise the block becomes a code event when it parses as code, or an other event with the text.](../assets/diagrams/mixed-content.png){ width="784" }
-  <figcaption>Each line is classified by the first rule that applies.</figcaption>
+  ![A mixed document is parsed using configured routes and fence parsers, patterns, code detection and text fallback, producing events with evidence.](../assets/diagrams/mixed-content.png){ width="784" }
+  <figcaption>Configured parsers and fallbacks produce events with evidence.</figcaption>
 </figure>
 
 1. **Code fences.** A Markdown fence (```` ``` ```` or `~~~`) starts a fenced

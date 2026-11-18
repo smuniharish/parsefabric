@@ -1,5 +1,6 @@
 flowchart TB
     inputs["Input and ParseContext<br/>text, bytes or<br/>decoded values"] --> engine
+    inputs --> partitioned
     parsers["Parsers<br/>built-in, mixed content<br/>or your own"] --> engine
     parsers --> partitioned
     engine["ParseEngine<br/>fills evidence,<br/>streams inputs,<br/>emits lifecycle events"] --> result["ParseResult<br/>events with evidence,<br/>issues, statistics"]

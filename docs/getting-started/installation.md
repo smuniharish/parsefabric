@@ -51,6 +51,7 @@ LangGraph yourself when you build graphs; the extra only needs
 | `opentelemetry-api` | The `OpenTelemetryObservabilitySink`; the API alone records nothing until you configure an SDK |
 | `structlog` | The `LoggingObservabilitySink` |
 | `pydantic` | Structured claims in `EvidenceSummarizer` |
+| `typing-extensions` | Typing support used by the package |
 | `langchain-core` | Only with the `langchain` extra: the LangChain and LangGraph adapters |
 
 ParseFabric never configures logging, telemetry export or a model provider

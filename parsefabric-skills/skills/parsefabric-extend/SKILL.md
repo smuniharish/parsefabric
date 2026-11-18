@@ -18,7 +18,7 @@ compatibility: >-
   Python 3.12 or newer with parsefabric 1.x installed (pip install
   parsefabric). The templates and scripts run offline.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   documentation: "https://parsefabric.readthedocs.io/en/latest/extending/"
 ---
 

@@ -5,6 +5,10 @@ events with evidence, the engine runs parsers and completes their evidence,
 aggregation stores events losslessly, and execution backends decide where
 work runs. Each layer depends only on the contracts of the layers below it.
 
+This overview describes public responsibilities, integration boundaries and
+extension points. Detailed implementation choices can change; the source
+code and the project's published history are public.
+
 <figure class="diagram" markdown="span">
   ![Inputs and parsers feed the parse engine or partitioned execution backends, which produce parse results; results become lossless evidence aggregates that can be serialized, materialized or summarized; the engine sends lifecycle events to observability sinks.](assets/diagrams/architecture.png){ width="600" }
   <figcaption>The main components and how data flows between them.</figcaption>

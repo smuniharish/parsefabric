@@ -6,6 +6,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Preparing version 1.0.1.
+
+### Changed
+
+- Simplified public architecture diagrams and summary guidance while
+  retaining integration and evidence contracts.
+- Documented independently installable upstream agent skills.
+- Updated documentation, lint and build tooling; package publishing is now a
+  manual maintainer-controlled process.
+
+### Fixed
+
+- Clarified when code-detection grammars are downloaded and how malformed
+  summary reviews are handled.
+
 ## [1.0.0] - 2026-11-09
 
 ParseFabric is stable: every component is an abstract base class with a
@@ -52,8 +67,7 @@ default implementation, everything that can do I/O or call user code is
   stored 91% smaller than its source, up from 82%.
 - Thread backends keep one event loop per worker. Thread, process and
   executor backends take a `shutdown_timeout`.
-- Capabilities are cached, results built by the package are not revalidated,
-  JSON is decoded in a single pass, and code detection is incremental.
+- Improved parsing and execution performance.
 - Routing order is deterministic, and `materialize` keeps the correlation and
   partition identifiers of its context.
 - Strict JSON uses the standard library.
@@ -103,6 +117,6 @@ The first public release.
 - Runnable examples with recorded output, reference integrations for Celery,
   Apache Spark and Apache Flink, and an Agent Skill for AI coding agents.
 
-[Unreleased]: https://github.com/smuniharish/parsefabric/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/smuniharish/parsefabric/releases/tag/v1.0.0
+[Unreleased]: https://github.com/smuniharish/parsefabric/commits/main/
+[1.0.0]: https://pypi.org/project/parsefabric/1.0.0/
 [0.1.0]: https://pypi.org/project/parsefabric/0.1.0/

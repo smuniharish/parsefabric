@@ -69,6 +69,85 @@ skill with `/skills info parsefabric`. See
 Copy the skill folder into the skills directory your agent documents. No
 adapter is needed: every Agent Skills host reads the same files.
 
+## Skills from dependencies and integrations
+
+These are maintained by their respective projects, installed separately from
+ParseFabric, and optional. Review their instructions and compatibility with
+your installed versions before use.
+
+### Tree-sitter language pack
+
+The [language-pack skills](https://github.com/xberg-io/tree-sitter-language-pack/tree/main/skills)
+cover code detection, parsing and parser-cache management. Install the main
+`tree-sitter-language-pack` skill with the skills CLI:
+
+```bash
+npx skills add xberg-io/tree-sitter-language-pack --skill tree-sitter-language-pack
+```
+
+The project's [installation guide](https://github.com/xberg-io/tree-sitter-language-pack/blob/main/plugin/README.md)
+also lists its focused skills and optional plugin. Node.js and the skills CLI
+are needed for the command above; use the installed language-pack version's
+documentation for its Python API and grammar cache.
+
+### Pydantic
+
+The standalone [`pydantic` skill](https://github.com/pydantic/skills/tree/main/skills/pydantic)
+covers validation and serialization. For Claude Code, install the upstream
+plugin:
+
+```bash
+claude plugin marketplace add pydantic/skills
+claude plugin install pydantic@pydantic-skills
+```
+
+For another supported agent, copy the complete `skills/pydantic/` directory
+from the [Pydantic skills repository](https://github.com/pydantic/skills)
+into that agent's skills directory.
+
+### uv and Ruff
+
+The [Astral plugin](https://github.com/astral-sh/agent-plugins) supplies
+`uv`, `ruff` and `ty` skills for Python tooling. For Codex, install it with:
+
+```bash
+codex plugin marketplace add astral-sh/agent-plugins
+codex plugin add astral@astral-sh
+```
+
+The upstream guide also documents Claude Code installation. The `ty` skill
+is optional; ParseFabric uses Pyrefly for its own type checks.
+
+### LangChain and LangGraph
+
+The [LangChain skills repository](https://github.com/langchain-ai/langchain-skills)
+provides `langchain-build-agent`, `langchain-agent-tracing`,
+`langchain-agent-monitoring`, and `langchain-eval-engineering`. To install
+its current skills for a supported agent:
+
+```bash
+npx skills add langchain-ai/langchain-skills --skill '*' --yes
+```
+
+Installing these skills does not install the optional ParseFabric
+`langchain` extra or LangGraph. Install those separately only when needed;
+see [LangChain and LangGraph](../integrations/langchain.md). The skills-only
+installation does not register the upstream documentation MCP servers.
+
+### Streamlit
+
+The optional Streamlit playground can use Streamlit's bundled
+`developing-with-streamlit` skill. Install Streamlit in your project
+environment, then run:
+
+```bash
+streamlit skills
+```
+
+The [Streamlit guide](https://docs.streamlit.io/develop/concepts/ai-agents/coding-agents)
+describes global installation, supported agents and Windows symlink
+requirements. Do not commit the generated links to the repository.
+
 ## Update and verify
 
 To update a manual installation, replace the installed folders with the

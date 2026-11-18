@@ -15,7 +15,7 @@ other skill where they meet, so an agent loads only the one it needs.
 
 | Page | Contents |
 | --- | --- |
-| [Install](install.md) | The skills CLI and manual installation for Claude Code, Codex, Cursor and GitHub Copilot. |
+| [Install](install.md) | Install ParseFabric skills and discover optional skills from dependencies and integrations. |
 | [Evaluation](evaluation.md) | The automated checks, evaluations and source review that keep the skills correct. |
 
 The skills live in

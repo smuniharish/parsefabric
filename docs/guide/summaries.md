@@ -7,28 +7,18 @@ reads facts derived from the aggregates, each with an identifier, counts and
 line positions.
 
 <figure class="diagram" markdown="span">
-  ![Aggregates become facts with IDs, counts and lines, reviewed in parallel batches; the model drafts structured claims; deterministic checks validate IDs, totals and numbers; the model critiques the rendered report; issues or failed checks trigger revisions while revisions are left, otherwise SummaryValidationError; a clean report is rendered with exact counts and lines.](../assets/diagrams/summarization.png){ width="506" }
-  <figcaption>Every batch is drafted, checked and critiqued before the
-  report is rendered.</figcaption>
+  ![Evidence aggregates and an application-configured language model feed the summarizer, which returns an evidence-checked report or a validation error.](../assets/diagrams/summarization.png){ width="506" }
+  <figcaption>Summaries are checked against the supplied evidence.</figcaption>
 </figure>
 
 ## How a summary is produced
 
-1. Aggregates are converted into **facts** with stable identifiers, and split
-   into batches of at most `max_aggregates` aggregates. Batches are reviewed
-   in parallel.
-2. For each batch, the model drafts **structured claims** that cite fact
-   identifiers.
-3. **Deterministic checks** verify that every citation exists and that every
-   count and number in a claim is supported by the cited facts.
-4. The model **critiques** the rendered candidate against the facts.
-5. Claims that fail a check or the critique are **revised**, up to
-   `max_revisions` times. If a batch still fails, `SummaryValidationError` is
-   raised; an unchecked report is never returned.
-6. The final report is **rendered from the checked claims** without another
-   model call. Counts and line positions come from the evidence, not from the
-   model, and the report starts with an inventory of the severities recorded
-   in the supplied evidence.
+Aggregates are reviewed in batches using the configured model. Citations and
+quantities in claims are checked against the supplied evidence, and the model
+also critiques the report. If review cannot produce a checked report within
+the configured limits, `SummaryValidationError` is raised instead of
+returning unchecked text. Counts and line positions in the report come from
+the evidence, and the report starts with an inventory of recorded severities.
 
 ## Connect a model
 
@@ -123,11 +113,9 @@ returns a copy of the result with the report in `llm_result`.
 Smaller batches keep each model call focused but need more calls. A batch
 that passes on the first attempt takes two calls: one draft and one critique.
 
-Batches run in an `asyncio.TaskGroup`. When one batch fails, batches that
-have not called the model yet are cancelled, and the first failure is
-raised. If the critic returns malformed output, it is asked again up to three
-times without using a revision; after that `SummaryValidationError` is
-raised.
+When one batch fails, outstanding review work is cancelled and the failure is
+raised. Malformed critique output is retried separately from the revision
+budget and can also cause `SummaryValidationError`.
 
 ## Model lifecycle
 
