@@ -8,6 +8,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Preparing version 1.0.1.
 
+### Added
+
+- Live PyPI download badges on the README and documentation home page.
+
 ### Changed
 
 - Simplified public architecture diagrams and summary guidance while
